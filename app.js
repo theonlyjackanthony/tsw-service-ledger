@@ -637,7 +637,7 @@
     $("coverage").textContent =
       state.source === "legacy"
         ? "Original workbook · partial coverage. Counts cover listed services. Locomotive and DLC assignments require separate evidence."
-        : "Main checklist · partial coverage. Includes published passenger services and workbook services confirmed in the HUD timetable database.";
+        : "Main checklist · partial coverage. Includes published passenger services, cross-checked workbook entries and services verified in game.";
   }
 
   function setView(next) {
@@ -763,14 +763,15 @@
         item.type === "Service" ? 5 : 4;
       ranked.push({item, rank});
     }
-    ranked.sort((a, b) => a.rank - b.rank);
+    ranked.sort((a, b) => a.rank - b.rank || a.item.title.localeCompare(b.item.title));
     searchHits = ranked.map(hit => hit.item);
     showSearchHits();
   }
 
   function showSearchHits() {
     $("globalCount").textContent = searchHits.length
-      ? fmt(searchHits.length) + " matches · showing " + fmt(Math.min(searchLimit, searchHits.length))
+      ? fmt(searchHits.length) + (searchHits.length === 1 ? " match" : " matches") +
+        (searchHits.length > searchLimit ? " · showing " + fmt(searchLimit) : "")
       : "No matches. Try a shorter name, a headcode or another station.";
     $("moreResults").hidden = searchLimit >= searchHits.length;
     $("globalList").innerHTML = searchHits.slice(0, searchLimit).map((hit, i) =>

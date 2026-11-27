@@ -83,6 +83,15 @@ const TSWLedger = (() => {
       currentRows.push(row);
     }
 
+    function applyObservation(row, observation) {
+      if (!observation) return;
+      for (const field of ["from", "to", "formation", "durationMinutes", "title"]) {
+        if (observation[field] != null) row[field] = observation[field];
+      }
+      if (observation.locomotive) row.locomotives = [observation.locomotive];
+      row.observation = observation.note;
+    }
+
     const legacyByKey = new Map();
     const legacyRows = legacy.services.map(values => {
       const row = [...values];
@@ -99,10 +108,7 @@ const TSWLedger = (() => {
         row.sourceUrl = bundle.hudCrosscheck.sourceUrl;
       }
       const observation = bundle.observations?.[row[0]];
-      if (observation) Object.assign(row, {
-        from: observation.from, to: observation.to, formation: observation.formation, durationMinutes: observation.durationMinutes ?? null,
-        locomotives: [observation.locomotive], title: observation.title, observation: observation.note,
-      });
+      applyObservation(row, observation);
       legacyByKey.set(row[0], row);
       return row;
     });
@@ -114,8 +120,21 @@ const TSWLedger = (() => {
     variantNames.set(slot("SEH", "Southeastern High Speed Extended"), timetables.get("southeastern-highspeed")?.name);
     const confirmedSlots = new Map();
     const serviceSlot = row => slot(row[1], row[3].trim().toUpperCase(), row[4]);
-    for (const original of legacyRows) {
-      if (!original.hud || currentByKey.has(original[0])) continue;
+    const confirmedRows = legacyRows.filter(row => row.hud || row.observation);
+    for (const [id, observation] of Object.entries(bundle.observations || {})) {
+      if (!observation.listing || legacyByKey.has(id)) continue;
+      const {timetableId, code, start} = observation.listing;
+      const timetable = timetables.get(timetableId);
+      const row = [id, routeForTimetable.get(timetableId), timetable.name, code, start];
+      Object.assign(row, {id, timetableId, locomotives: []});
+      applyObservation(row, observation);
+      confirmedRows.push(row);
+    }
+    for (const original of confirmedRows) {
+      if (currentByKey.has(original[0])) {
+        applyObservation(currentByKey.get(original[0]), bundle.observations?.[original[0]]);
+        continue;
+      }
       const row = Object.assign([...original], original);
       row[2] = variantNames.get(slot(row[1], row[2])) || row[2];
       currentRows.push(row);

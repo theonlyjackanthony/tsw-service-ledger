@@ -159,6 +159,24 @@ const TSWLedger = (() => {
       if (!variants.some(v => v.name === row[2])) variants.push({name: row[2]});
     }
 
+    // Published additions share a workbook tick only where the reviewed source identifies that job.
+    const occupied = new Set(currentRows.map(row => slot(row[1], row[2], row[3].toUpperCase(), row[4])));
+    for (const service of bundle.additionalServices || []) {
+      const {id, route, variant, code, start} = service;
+      const name = timetables.get(service.timetableId)?.name || variant;
+      const identity = slot(route, name, code.toUpperCase(), start);
+      if (currentByKey.has(id) || occupied.has(identity)) continue;
+      const row = Object.assign([id, route, name, code, start], service, {
+        locomotives: service.locomotive ? [service.locomotive] : [],
+        durationMinutes: service.durationMinutes ?? null,
+      });
+      currentRows.push(row);
+      currentByKey.set(id, row);
+      occupied.add(identity);
+      const variants = currentRoutes[route].variants;
+      if (!variants.some(v => v.name === name)) variants.push({name});
+    }
+
     function reconcile(state) {
       // A manually logged headcode and departure can now have a unique corroborated workbook row.
       const manualLinks = new Map();

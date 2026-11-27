@@ -327,6 +327,8 @@
         .join("") || '<p class="muted">No matching routes.</p>';
   }
   function availabilityText(row) {
+    if (row.source === "freight") return "Freight timetable · first on-route time · PS5 unverified";
+    if (row.source === "wiki" || row.source === "gameplay") return "Community listing · PS5 unverified";
     if (row.hudListing) return "HUD-listed · PS5 and DLC requirements unverified";
     if (row.retired) return "Retired from this catalogue";
     if (row[0].startsWith("manual:")) return "Manually logged";
@@ -365,6 +367,17 @@
     );
   }
   function evidenceDetails(row) {
+    if (row.source === "freight" || row.source === "wiki" || row.source === "gameplay") {
+      const label = {freight: "Train Sim Timetables · freight", wiki: "Train Sim World Wiki", gameplay: "Recorded PC gameplay"}[row.source];
+      const booked = [row.origin, row.destination].filter(Boolean).map(html).join(" → ");
+      const detail = row.source === "freight"
+        ? "<div>On-route times " + html(row[4]) + "–" + html(row.arrival) +
+          ". The published working can span several driving jobs.</div>" +
+          (booked ? "<div>Booked journey · " + booked + "</div>" : "")
+        : "";
+      return '<details class="evidence"><summary>Service sources</summary>' +
+        sourceLink(row.sourceUrl, label) + detail + "</details>";
+    }
     if (row.hud || row.observation) {
       const evidence = row.hud ? (row.hudListing ? "" : "Original workbook · ") + sourceLink(row.sourceUrl, "TSW HUD timetable database") +
         " · record " + html(row.hud.hudId) + " · start " + html(row.hud.start) : (row.sourceUrl ? sourceLink(row.sourceUrl, "Published service") : "");
@@ -422,7 +435,7 @@
     }
   }
   function searchTerms(row) {
-    return [row[3], row[4], row.title, row.from, row.to, row.formation,
+    return [row[3], row[4], row.title, row.from, row.to, row.origin, row.destination, row.formation,
       ...(row.points || []), ...(row.locomotives ?? []), state.done[row[0]]?.loco].join(" ").toLowerCase();
   }
 
@@ -743,7 +756,7 @@
         const endpoints = [row.from, row.to].filter(Boolean).join(" → ");
         const detail = [name, variant, row.hudListing ? "HUD listing · PS5 unverified" : "", endpoints, ...new Set(locos)].filter(Boolean).join(" · ");
         add("Service", "service:" + id, source, route, variant, id, row.title || code, detail,
-          [code, time, ...(row.points || []), row.formation, ...locos.map(ledger.locoName)].join(" "), time, [code, time, endpoints, row.formation, ...locos].join(" "));
+          [code, time, row.origin, row.destination, ...(row.points || []), row.formation, ...locos.map(ledger.locoName)].join(" "), time, [code, time, endpoints, row.formation, ...locos].join(" "));
       }
     }
     return entries;

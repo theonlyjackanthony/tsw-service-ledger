@@ -193,11 +193,11 @@
 
   function percent(done, total) {
     if (!total) return "—";
-    return (
-      ((100 * done) / total).toLocaleString("en-GB", {
-        maximumFractionDigits: 1,
-      }) + "%"
-    );
+    const value = (100 * done) / total;
+    if (done < total && value >= 99.95) return ">99.9%";
+    const precision = value > 0 && value < 0.1
+      ? { maximumSignificantDigits: 2 } : { maximumFractionDigits: 1 };
+    return value.toLocaleString("en-GB", precision) + "%";
   }
   function bar(done, total) {
     return (
@@ -240,32 +240,31 @@
   function renderSummary(keys, perRoute) {
     const total = tally();
     const used = new Set();
+    const listedLocos = new Set(keys.flatMap(key => routes[key].locos || []).map(ledger.locoName));
     for (const row of rows) {
       if (!visible(row[1])) continue;
       count(total, row);
       count(perRoute.get(row[1]), row);
+      if (state.unavailable[row[0]]) continue;
       const name = state.done[row[0]]?.loco;
-      if (name && !state.unavailable[row[0]]) used.add(ledger.locoName(name));
+      if (name) {
+        used.add(ledger.locoName(name));
+        listedLocos.add(ledger.locoName(name));
+      }
+      if (!row.retired) {
+        for (const loco of row.locomotives || []) listedLocos.add(ledger.locoName(loco));
+      }
     }
     const driven = [...perRoute.values()].filter((t) => t.done).length;
+    function metric(label, done, denominator) {
+      return '<div class="metric"><b>' + html(percent(done, denominator)) +
+        '</b><strong class="metric-fraction">' + fmt(done) + ' / ' + fmt(denominator) +
+        '</strong><span>' + label + '</span>' + bar(done, denominator) + '</div>';
+    }
     $("metrics").innerHTML =
-      '<div class="metric"><b>' +
-      fmt(total.done) +
-      " / " +
-      fmt(total.total) +
-      "</b><span>Listed services completed · " +
-      percent(total.done, total.total) +
-      "</span>" +
-      bar(total.done, total.total) +
-      "</div>" +
-      '<div class="metric"><b>' +
-      fmt(driven) +
-      " / " +
-      fmt(keys.length) +
-      "</b><span>Routes driven</span></div>" +
-      '<div class="metric"><b>' +
-      fmt(used.size) +
-      "</b><span>Locomotives driven</span></div>";
+      metric("Listed services completed", total.done, total.total) +
+      metric("Routes driven", driven, keys.length) +
+      metric("Listed locomotives driven", used.size, listedLocos.size);
     $("scope").textContent =
       fmt(keys.length) +
       " routes · " +

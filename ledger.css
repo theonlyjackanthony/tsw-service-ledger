@@ -534,3 +534,9 @@ select {
   overflow-wrap: anywhere;
 }
 .search-hit small { display: block; }
+
+.metric-fraction {
+  display: block;
+  font-size: 14px;
+  font-variant-numeric: tabular-nums;
+}

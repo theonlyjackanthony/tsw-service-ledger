@@ -1,0 +1,211 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>TSW Service Ledger</title>
+    <meta name="referrer" content="no-referrer">
+    <meta name="robots" content="noindex,nofollow">
+    <meta name="theme-color" content="#10191c">
+    <meta name="apple-mobile-web-app-title" content="TSW Ledger">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <link rel="manifest" href="./manifest.webmanifest">
+    <link rel="apple-touch-icon" sizes="180x180" href="./icons/apple-touch-icon.png">
+    <link rel="icon" href="./icons/ledger-192.png">
+    <link rel="stylesheet" href="ledger.css" />
+  </head>
+  <body>
+    <main id="ledgerGate"><h1>Service Ledger</h1><p>Opening your ledger…</p></main>
+    <main hidden>
+      <header>
+        <div class="eyebrow">Train Sim World · Driver's ledger</div>
+        <h1>Service Ledger</h1>
+        <p class="muted">Train Sim World 7 · PS5</p>
+        <div class="rowflex">
+          <button class="secondary" id="backup">Export progress</button
+          ><button class="secondary" id="restore">Restore progress</button
+          ><input
+            class="hidden"
+            id="file"
+            type="file"
+            accept="application/json,.json"
+          /><button class="secondary" id="manual">Log unlisted service</button>
+        </div>
+      </header>
+      <div class="grid" id="metrics"></div>
+      <nav class="tabs" aria-label="Ledger sections">
+        <button class="active" data-view="routes">Routes</button
+        ><button data-view="services">Services</button
+        ><button data-view="locos">Locomotives</button
+        ><button data-view="shift">Shift Manager</button>
+      </nav>
+      <div class="catalogue-controls">
+        <div>
+          <label for="source">Timetable source</label
+          ><select id="source">
+            <option value="current">Passenger listings</option>
+            <option value="legacy">Original workbook</option>
+          </select>
+        </div>
+        <label class="check-label"
+          ><input type="checkbox" id="owned" checked /> Owned route DLC
+          only</label
+        ><span class="scope" id="scope"></span>
+      </div>
+      <p class="notice" id="coverage">Loading the timetable database…</p>
+      <p class="notice hidden" id="storageNotice" role="alert"></p>
+      <section class="panel" id="routesPane">
+        <h2>Route progress</h2>
+        <div class="toolbar">
+          <div class="wide">
+            <label for="routeSearch">Find a route</label
+            ><input
+              id="routeSearch"
+              type="text"
+              placeholder="Search routes or timetable names"
+            />
+          </div>
+          <div>
+            <label for="routeSort">Sort</label
+            ><select id="routeSort">
+              <option value="name">Route name</option>
+              <option value="progress">Most completed</option>
+            </select>
+          </div>
+        </div>
+        <div id="routeList"></div>
+      </section>
+      <section class="panel hidden" id="servicesPane">
+        <h2 id="serviceTitle">Service checklist</h2>
+        <div id="variantSummary"></div>
+        <div class="toolbar">
+          <div>
+            <label for="route">Route</label
+            ><select id="route"></select>
+          </div>
+          <div>
+            <label for="variant">Timetable variant</label
+            ><select id="variant"></select>
+          </div>
+          <div>
+            <label for="status">Status</label
+            ><select id="status">
+              <option value="remaining">Remaining · hide completed</option>
+              <option value="all">All records</option>
+              <option value="completed">Completed</option>
+              <option value="unavailable">Marked unavailable</option>
+              <option value="retired">Retired records</option>
+            </select>
+          </div>
+          <div class="wide">
+            <label for="search">Find a service</label
+            ><input
+              id="search"
+              type="text"
+              placeholder="Headcode, station, time or locomotive"
+            />
+          </div>
+          <div>
+            <label for="driven">Loco for next tick (optional)</label
+            ><select id="driven"></select>
+          </div>
+        </div>
+        <p class="selection hidden" id="selectedService"></p>
+        <div id="serviceList"></div>
+        <div class="pagination">
+          <button id="prev" class="secondary">Previous</button
+          ><span id="pageLabel" class="muted"></span
+          ><button id="next" class="secondary">Next</button>
+        </div>
+      </section>
+      <section class="panel hidden" id="locosPane">
+        <h2>Locomotive progress</h2>
+        <p class="muted">
+          Progress covers services with a verified locomotive assignment.
+          Personal drive counts use the locomotive recorded on each completion.
+        </p>
+        <div class="toolbar">
+          <div class="wide">
+            <label for="locoSearch">Find a locomotive</label
+            ><input
+              type="text"
+              id="locoSearch"
+              placeholder="Class or locomotive name"
+            />
+          </div>
+        </div>
+        <div id="locoList"></div>
+      </section>
+      <section class="panel hidden" id="shiftPane">
+        <h2>Shift Manager</h2>
+        <p class="muted">
+          Draw a remaining passenger service with confirmed PS5 requirements
+          from your owned DLC. Filter by scheduled on-route minutes or leave
+          both limits blank for any duration.
+        </p>
+        <form id="shiftForm" class="toolbar shift-form">
+          <div>
+            <label for="shiftMin">Minimum minutes</label
+            ><input
+              type="number"
+              id="shiftMin"
+              min="0"
+              step="1"
+              placeholder="Any"
+            />
+          </div>
+          <div>
+            <label for="shiftMax">Maximum minutes</label
+            ><input
+              type="number"
+              id="shiftMax"
+              min="0"
+              step="1"
+              placeholder="Any"
+            />
+          </div>
+          <button type="submit" class="primary">Draw a shift</button>
+        </form>
+        <div id="shiftResult" aria-live="polite"></div>
+      </section>
+      <div class="foot" id="sourceNote"></div>
+    </main>
+    <dialog id="manualDialog" aria-labelledby="manualTitle">
+      <form method="dialog" id="manualForm">
+        <h2 id="manualTitle">Log a service not in the catalogue</h2>
+        <label for="mRoute">Route</label
+        ><select id="mRoute" required></select
+        ><label for="mName">Service name or headcode</label
+        ><input
+          id="mName"
+          type="text"
+          required
+          placeholder="e.g. 2A15 London Victoria – Brighton"
+        /><label for="mTime">Departure time (optional)</label
+        ><input id="mTime" type="time" /><label for="mLoco"
+          >Locomotive (optional)</label
+        ><input id="mLoco" type="text" placeholder="Exact in-game loco name" />
+        <div class="rowflex">
+          <button class="primary" type="submit">Save as completed</button
+          ><button type="button" id="cancelManual">Cancel</button>
+        </div>
+      </form>
+    </dialog>
+    <dialog id="locoDialog" aria-labelledby="locoTitle">
+      <form method="dialog" id="locoForm">
+        <h2 id="locoTitle">Which locomotive?</h2>
+        <p id="locoService" class="muted"></p>
+        <label for="locoChoice">Loco / previous entry</label
+        ><select id="locoChoice"></select
+        ><label for="customLoco">Or enter exact loco name</label
+        ><input type="text" id="customLoco" placeholder="Optional" />
+        <div class="rowflex">
+          <button class="primary" type="submit">Save</button
+          ><button type="button" id="cancelLoco">Cancel</button>
+        </div>
+      </form>
+    </dialog>
+    <script defer src="ledger-core.js"></script>
+    <script defer src="boot.js"></script>
+  </body>
+</html>

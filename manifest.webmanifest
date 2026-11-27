@@ -1,0 +1,15 @@
+{
+  "name": "TSW Service Ledger",
+  "short_name": "TSW Ledger",
+  "description": "Your personal Train Sim World service checklist and shift manager.",
+  "lang": "en-GB",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "theme_color": "#10191c",
+  "background_color": "#10191c",
+  "icons": [
+    {"src": "./icons/ledger-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any"},
+    {"src": "./icons/ledger-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any maskable"}
+  ]
+}

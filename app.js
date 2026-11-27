@@ -364,9 +364,10 @@
   function evidenceDetails(row) {
     if (row.hud || row.observation) {
       const evidence = row.hud ? "Original workbook · " + sourceLink(row.sourceUrl, "TSW HUD timetable database") +
-        " · record " + html(row.hud.hudId) + " · start " + html(row.hud.start) : "";
+        " · record " + html(row.hud.hudId) + " · start " + html(row.hud.start) : (row.sourceUrl ? sourceLink(row.sourceUrl, "Published service") : "");
       return '<details class="evidence"><summary>Service sources</summary>' +
-        evidence + (row.observation ? "<div>" + html(row.observation) + "</div>" : "") + "</details>";
+        evidence + (row.observation ? "<div>" + html(row.observation) + "</div>" : "") +
+        (row.observationUrl ? sourceLink(row.observationUrl, "Developer’s layer notes") : "") + "</details>";
     }
     if (!row.sourceUrl) return "";
     const links = [sourceLink(row.sourceUrl, "Published service")];

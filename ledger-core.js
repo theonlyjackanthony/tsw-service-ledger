@@ -89,7 +89,9 @@ const TSWLedger = (() => {
         if (observation[field] != null) row[field] = observation[field];
       }
       if (observation.locomotive) row.locomotives = [observation.locomotive];
+      if (observation.listing) row[4] = observation.listing.start;
       row.observation = observation.note;
+      row.observationUrl = observation.evidenceUrl;
     }
 
     const legacyByKey = new Map();

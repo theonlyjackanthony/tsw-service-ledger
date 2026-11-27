@@ -93,6 +93,11 @@ const TSWLedger = (() => {
         formation: current?.formation, locomotives: current?.locomotives || [],
         rule: current?.rule, sourceUrl: current?.sourceUrl,
       });
+      const observation = bundle.observations?.[row[0]];
+      if (observation) Object.assign(row, {
+        from: observation.from, to: observation.to, formation: observation.formation,
+        locomotives: [observation.locomotive], title: observation.title, observation: observation.note,
+      });
       legacyByKey.set(row[0], row);
       return row;
     });

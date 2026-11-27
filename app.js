@@ -359,6 +359,7 @@
     );
   }
   function evidenceDetails(row) {
+    if (row.observation) return '<details class="evidence"><summary>Service sources</summary>' + html(row.observation) + "</details>";
     if (!row.sourceUrl) return "";
     const links = [sourceLink(row.sourceUrl, "Published service")];
     let products = "";
@@ -408,6 +409,11 @@
       return "";
     }
   }
+  function searchTerms(row) {
+    return [row[3], row[4], row.title, row.from, row.to, row.formation,
+      ...(row.locomotives ?? []), state.done[row[0]]?.loco].join(" ").toLowerCase();
+  }
+
   function renderServices() {
     const key = $("route").value,
       variant = $("variant").value,
@@ -447,18 +453,7 @@
         if (status === "unavailable" && !state.unavailable[id]) return false;
         if (status === "retired" && !row.retired) return false;
         if (!q) return true;
-        return [
-          row[3],
-          row[4],
-          row.from,
-          row.to,
-          row.formation,
-          ...(row.locomotives ?? []),
-          state.done[id]?.loco,
-        ]
-          .join(" ")
-          .toLowerCase()
-          .includes(q);
+        return searchTerms(row).includes(q);
       })
       .sort(
         (a, b) =>
@@ -490,7 +485,7 @@
             (complete ? "checked " : "") +
             (unavailable ? "disabled" : "") +
             '><div><div class="sname">' +
-            html(row[3]) +
+            html(row.title || row[3]) +
             "</div>" +
             serviceInfo(row) +
             (complete
@@ -513,6 +508,15 @@
         })
         .join("") ||
       '<p class="muted">No matching services. Change the filters or log an unlisted service.</p>';
+    const other = state.source === "current" ? "legacy" : "current";
+    const otherRows = ledger.services(other, state).filter(row => row[1] === key &&
+      !row.manual && !row.retired && (!q || searchTerms(row).includes(q)));
+    if (otherRows.length && (!matched.length || !q)) {
+      const name = other === "legacy" ? "original workbook" : "passenger listings";
+      $("variantSummary").innerHTML += ' <button class="secondary" data-other-source="' +
+        other + '">Browse ' + fmt(otherRows.length) + (q ? ' matching' : '') +
+        ' records in ' + name + '</button>';
+    }
     $("pageLabel").textContent =
       fmt(matched.length) +
       " records · page " +
@@ -769,7 +773,18 @@
     if (!button) return;
     const action = button.dataset;
     if (action.view) setView(action.view);
-    else if (action.route) {
+    else if (action.otherSource) {
+      const route = $("route").value;
+      state.source = action.otherSource;
+      $("source").value = state.source;
+      catalogue();
+      routeOpts(route);
+      variants(true);
+      $("status").value = "all";
+      selectedService = null;
+      page = 0;
+      persist();
+    } else if (action.route) {
       selectedService = null;
       $("route").value = action.route;
       $("search").value = "";

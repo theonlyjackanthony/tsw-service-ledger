@@ -108,12 +108,44 @@ const TSWLedger = (() => {
     });
     const legacyVariants = index(routeLinks.legacyVariants, "timetableId");
 
+    const variantNames = new Map(routeLinks.legacyVariants.map(link =>
+      [slot(link.legacyKey, link.variant), timetables.get(link.timetableId)?.name]));
+    // The extended Southeastern route is the one covered by the publisher's full timetable.
+    variantNames.set(slot("SEH", "Southeastern High Speed Extended"), timetables.get("southeastern-highspeed")?.name);
+    const confirmedSlots = new Map();
+    const serviceSlot = row => slot(row[1], row[3].trim().toUpperCase(), row[4]);
+    for (const original of legacyRows) {
+      if (!original.hud || currentByKey.has(original[0])) continue;
+      const row = Object.assign([...original], original);
+      row[2] = variantNames.get(slot(row[1], row[2])) || row[2];
+      currentRows.push(row);
+      currentByKey.set(row[0], row);
+      confirmedSlots.set(serviceSlot(row), row);
+      const variants = currentRoutes[row[1]].variants;
+      if (!variants.some(v => v.name === row[2])) variants.push({name: row[2]});
+    }
+
     function reconcile(state) {
+      // A manually logged headcode and departure can now have a unique corroborated workbook row.
+      const manualLinks = new Map();
+      const manualSlots = new Map();
+      for (const manual of state.manual || []) {
+        const key = serviceSlot(manual);
+        manualSlots.set(key, manualSlots.has(key) ? null : manual);
+      }
+      for (const [key, manual] of manualSlots) {
+        const row = confirmedSlots.get(key);
+        if (manual && row && manual[0].startsWith("manual:") &&
+            !state.done[row[0]] && !state.unavailable[row[0]]) manualLinks.set(manual[0], row[0]);
+      }
+      if (manualLinks.size) {
+        state.manual = state.manual.filter(row => !manualLinks.has(row[0]));
+      }
       // New evidence may link two records after the user has already logged either one.
       for (const table of [state.done, state.unavailable, state.records]) {
         if (!table) continue;
         for (const id of Object.keys(table)) {
-          const target = serviceLinks[id];
+          const target = manualLinks.get(id) || serviceLinks[id];
           if (!target || target === id) continue;
           if (!Object.hasOwn(table, target) || (table === state.done &&
               String(table[id]?.date || "") > String(table[target]?.date || ""))) {

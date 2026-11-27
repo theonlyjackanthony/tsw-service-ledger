@@ -360,7 +360,7 @@
   }
   function evidenceDetails(row) {
     if (row.hud || row.observation) {
-      const evidence = row.hud ? sourceLink(row.sourceUrl, "TSW HUD timetable database") +
+      const evidence = row.hud ? "Original workbook · " + sourceLink(row.sourceUrl, "TSW HUD timetable database") +
         " · record " + html(row.hud.hudId) + " · start " + html(row.hud.start) : "";
       return '<details class="evidence"><summary>Service sources</summary>' +
         evidence + (row.observation ? "<div>" + html(row.observation) + "</div>" : "") + "</details>";
@@ -517,7 +517,7 @@
     const otherRows = ledger.services(other, state).filter(row => row[1] === key &&
       !row.manual && !row.retired && (!q || searchTerms(row).includes(q)));
     if (otherRows.length && (!matched.length || !q)) {
-      const name = other === "legacy" ? "original workbook" : "passenger listings";
+      const name = other === "legacy" ? "original workbook" : "main checklist";
       $("variantSummary").innerHTML += ' <button class="secondary" data-other-source="' +
         other + '">Browse ' + fmt(otherRows.length) + (q ? ' matching' : '') +
         ' records in ' + name + '</button>';
@@ -633,7 +633,7 @@
     $("coverage").textContent =
       state.source === "legacy"
         ? "Original workbook · partial coverage. Counts cover listed services. Locomotive and DLC assignments require separate evidence."
-        : "Passenger listings · partial coverage. Counts use published services. Check each entry for its PS5 DLC requirements.";
+        : "Main checklist · partial coverage. Includes published passenger services and workbook services confirmed in the HUD timetable database.";
   }
 
   function setView(next) {
@@ -919,6 +919,7 @@
       date: new Date().toISOString(),
     };
     $("manualDialog").close();
+    ledger.reconcile(state);
     catalogue();
     routeOpts();
     persist();

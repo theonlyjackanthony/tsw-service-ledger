@@ -39,6 +39,9 @@
   let shift = null;
   let shiftAttempted = false;
   let selectedService = null;
+  let searchIndex = null;
+  let searchHits = [];
+  let searchLimit = 15;
 
   function readState(raw) {
     const saved = JSON.parse(raw);
@@ -150,6 +153,7 @@
     return [...new Set([...names].map(ledger.locoName).filter(Boolean))].sort();
   }
   function catalogue() {
+    searchIndex = null;
     routes = ledger.routes(state.source);
     rows = ledger.services(state.source, state);
     byId = new Map(rows.map((row) => [row[0], row]));
@@ -469,7 +473,7 @@
     page = Math.min(Math.max(0, page), pages - 1);
     $("selectedService").classList.toggle("hidden", !selectedService);
     $("selectedService").innerHTML = selectedService
-      ? 'Selected shift <button class="secondary" data-clear-selection="true">Show timetable</button>'
+      ? 'Selected service <button class="secondary" data-clear-selection="true">Show timetable</button>'
       : "";
     $("serviceList").innerHTML =
       matched
@@ -623,6 +627,7 @@
   }
 
   function render() {
+    if ($("globalQuery").value) findAcrossLedger();
     const keys = routeKeys();
     const groups = new Map(keys.map((key) => [key, tally()]));
     renderSummary(keys, groups);
@@ -658,6 +663,7 @@
   }
 
   function persist() {
+    searchIndex = null;
     shift = null;
     shiftAttempted = false;
     save();
@@ -697,24 +703,139 @@
     $("locoDialog").showModal();
   }
 
-  function openShift() {
-    if (!shift) return;
-    state.source = "current";
-    $("source").value = "current";
+  const normalizeSearch = value => String(value ?? "").normalize("NFKD")
+    .replace(/\p{M}/gu, "").toLowerCase().replace(/[^\p{L}\p{N}]+/gu, " ").trim();
+
+  function makeSearchIndex() {
+    const entries = [];
+    const seen = new Set();
+    function add(type, key, source, route, variant, id, title, detail, extra = "", time = "", specific = "") {
+      if (seen.has(key)) return;
+      seen.add(key);
+      entries.push({type, source, route, variant, id, title, detail, time,
+        primary: normalizeSearch(title), specific: normalizeSearch(specific), terms: normalizeSearch([title, route, detail, extra].join(" "))});
+    }
+    for (const source of ["current", "legacy"]) {
+      const collection = ledger.routes(source);
+      for (const [route, item] of Object.entries(collection)) {
+        const name = item.name.split("\n")[0].replace(/\s+Route Add-On\s*$/i, "");
+        add("Route", "route:" + route, source, route, "", "", name, route);
+        for (const {name: variant} of item.variants)
+          add("Timetable", JSON.stringify([route, variant]), source, route, variant, "", variant, name);
+        for (const alias of item.locos || []) {
+          const loco = ledger.locoName(alias);
+          add("Locomotive", "loco:" + loco, source, route, "", "", loco, "Locomotive progress", alias);
+        }
+      }
+      for (const row of ledger.services(source, state)) {
+        const [id, route, variant, code, time] = row;
+        const name = collection[route]?.name.split("\n")[0].replace(/\s+Route Add-On\s*$/i, "") || route;
+        const locos = [...(row.locomotives || []), state.done[id]?.loco].filter(Boolean);
+        for (const alias of locos) {
+          if (!state.unavailable[id]) {
+            const loco = ledger.locoName(alias);
+            add("Locomotive", "loco:" + loco, source, route, "", "", loco, "Locomotive progress", alias);
+          }
+        }
+        const endpoints = [row.from, row.to].filter(Boolean).join(" → ");
+        const detail = [name, variant, endpoints, ...new Set(locos)].filter(Boolean).join(" · ");
+        add("Service", "service:" + id, source, route, variant, id, row.title || code, detail,
+          [code, time, row.formation, ...locos.map(ledger.locoName)].join(" "), time, [code, time, endpoints, row.formation, ...locos].join(" "));
+      }
+    }
+    return entries;
+  }
+
+  function findAcrossLedger() {
+    const query = normalizeSearch($("globalQuery").value);
+    $("globalResults").hidden = !query;
+    if (!query) {
+      searchHits = [];
+      $("globalList").replaceChildren();
+      return;
+    }
+    searchIndex ||= makeSearchIndex();
+    const words = query.split(" ");
+    const ranked = [];
+    for (const item of searchIndex) {
+      if (!words.every(word => item.terms.includes(word))) continue;
+      const rank = item.primary === query ? 0 : item.primary.startsWith(query) ? 1 :
+        item.primary.includes(query) ? 2 : words.every(word => item.specific.includes(word)) ? 3 :
+        item.type === "Service" ? 5 : 4;
+      ranked.push({item, rank});
+    }
+    ranked.sort((a, b) => a.rank - b.rank);
+    searchHits = ranked.map(hit => hit.item);
+    showSearchHits();
+  }
+
+  function showSearchHits() {
+    $("globalCount").textContent = searchHits.length
+      ? fmt(searchHits.length) + " matches · showing " + fmt(Math.min(searchLimit, searchHits.length))
+      : "No matches. Try a shorter name, a headcode or another station.";
+    $("moreResults").hidden = searchLimit >= searchHits.length;
+    $("globalList").innerHTML = searchHits.slice(0, searchLimit).map((hit, i) =>
+      '<button type="button" class="search-hit" data-search-hit="' + i + '"><strong>' +
+      html(hit.title) + '</strong>' + (hit.time ? ' · ' + html(hit.time) : '') + '<small>' +
+      html([hit.type, hit.source === "legacy" ? "Original workbook" : "", hit.detail].filter(Boolean).join(" · ")) +
+      '</small></button>').join("");
+  }
+
+  function clearGlobalSearch() {
+    $("globalQuery").value = "";
+    findAcrossLedger();
+  }
+
+  function openSearchHit(hit) {
+    clearGlobalSearch();
+    if (hit.type === "Locomotive") {
+      selectSourceRoute(hit.source, hit.route);
+      $("locoSearch").value = hit.title;
+      save();
+      setView("locos");
+      $("locoSearch").focus();
+    } else {
+      openChecklist(hit.source, hit.route, hit.variant, hit.id);
+    }
+  }
+
+  $("globalQuery").oninput = () => {
+    searchLimit = 15;
+    findAcrossLedger();
+  };
+  $("closeResults").onclick = () => { clearGlobalSearch(); $("globalQuery").focus(); };
+  $("moreResults").onclick = () => {
+    const firstNew = searchLimit;
+    searchLimit += 15;
+    showSearchHits();
+    $("globalList").children[firstNew]?.focus();
+  };
+
+  function selectSourceRoute(source, route) {
+    state.source = source;
+    $("source").value = source;
     catalogue();
-    if (!visible(shift[1])) {
+    if (!visible(route)) {
       state.owned = false;
       $("owned").checked = false;
     }
-    routeOpts(shift[1]);
-    $("variant").value = shift[2];
+    routeOpts(route);
+  }
+
+  function openChecklist(source, route, variant, id) {
+    selectSourceRoute(source, route);
+    $("variant").value = variant;
     $("status").value = "all";
     $("search").value = "";
-    selectedService = shift[0];
+    selectedService = id || null;
     page = 0;
     save();
     setView("services");
-    $("serviceList").querySelector("input")?.focus();
+    (id ? $("serviceList").querySelector("input") : $("route"))?.focus();
+  }
+
+  function openShift() {
+    if (shift) openChecklist("current", shift[1], shift[2], shift[0]);
   }
 
   $("backup").onclick = () => {
@@ -764,7 +885,7 @@
     $("routesPane").classList.add("hidden");
     document
       .querySelectorAll(
-        ".tabs button, .catalogue-controls select, .catalogue-controls input",
+        "#globalQuery, .tabs button, .catalogue-controls select, .catalogue-controls input",
       )
       .forEach((el) => {
         el.disabled = true;
@@ -777,7 +898,8 @@
     const button = event.target.closest("button");
     if (!button) return;
     const action = button.dataset;
-    if (action.view) setView(action.view);
+    if (action.searchHit !== undefined) openSearchHit(searchHits[Number(action.searchHit)]);
+    else if (action.view) setView(action.view);
     else if (action.otherSource) {
       const route = $("route").value;
       state.source = action.otherSource;

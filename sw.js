@@ -2,7 +2,7 @@
 
 // The build fingerprints all offline assets so a new timetable installs as one set.
 const prefix = "tsw-ledger:" + self.registration.scope + ":";
-const cacheName = prefix + "ffbcb58cc1fae13ee48e";
+const cacheName = prefix + "336e973a35462a502c98";
 const files = ["index.html","data/ledger.enc","ledger-core.js","app.js","ledger.css","boot.js","manifest.webmanifest","icons/apple-touch-icon.png","icons/ledger-192.png","icons/ledger-512.png"];
 const urls = new Set(files.map(file => new URL(file, self.registration.scope).href));
 const entry = new URL("index.html", self.registration.scope).href;

@@ -32,6 +32,18 @@
           /><button class="secondary" id="manual">Log unlisted service</button>
         </div>
       </header>
+      <section id="ledgerSearch" aria-label="Ledger search">
+        <label for="globalQuery">Search the whole ledger</label>
+        <input type="search" id="globalQuery" autocomplete="off" placeholder="Route, timetable, loco, station or headcode" />
+        <div id="globalResults" hidden>
+          <p id="globalCount" class="muted" role="status"></p>
+          <div id="globalList"></div>
+          <div class="rowflex">
+            <button type="button" class="secondary" id="moreResults">Show more</button>
+            <button type="button" class="secondary" id="closeResults">Clear search</button>
+          </div>
+        </div>
+      </section>
       <div class="grid" id="metrics"></div>
       <nav class="tabs" aria-label="Ledger sections">
         <button class="active" data-view="routes">Routes</button

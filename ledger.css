@@ -517,3 +517,20 @@ select {
     display: none;
   }
 }
+
+#ledgerSearch { margin: 16px 0; }
+#globalQuery { width: 100%; font-size: 16px; }
+#globalResults { padding: 8px 0; }
+#globalList { margin-bottom: 10px; }
+.search-hit {
+  display: block;
+  width: 100%;
+  padding: 9px 12px;
+  text-align: left;
+  background: var(--panel);
+  border: 0;
+  border-bottom: 1px solid var(--edge);
+  border-radius: 0;
+  overflow-wrap: anywhere;
+}
+.search-hit small { display: block; }

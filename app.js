@@ -772,6 +772,16 @@
     showSearchHits();
   }
 
+  function searchStatus(hit) {
+    if (hit.type !== "Service") return "";
+    let status = "";
+    if (state.done[hit.id]) {
+      status += '<span class="search-done"><span aria-hidden="true">✓</span> Completed</span>';
+    }
+    if (state.unavailable[hit.id]) status += '<span class="muted">Marked unavailable</span>';
+    return status;
+  }
+
   function showSearchHits() {
     $("globalCount").textContent = searchHits.length
       ? fmt(searchHits.length) + (searchHits.length === 1 ? " match" : " matches") +
@@ -779,8 +789,8 @@
       : "No matches. Try a shorter name, a headcode or another station.";
     $("moreResults").hidden = searchLimit >= searchHits.length;
     $("globalList").innerHTML = searchHits.slice(0, searchLimit).map((hit, i) =>
-      '<button type="button" class="search-hit" data-search-hit="' + i + '"><strong>' +
-      html(hit.title) + '</strong>' + (hit.time ? ' · ' + html(hit.time) : '') + '<small>' +
+      '<button type="button" class="search-hit" data-search-hit="' + i + '"><span class="search-hit-heading"><span><strong>' +
+      html(hit.title) + '</strong>' + (hit.time ? ' · ' + html(hit.time) : '') + '</span>' + searchStatus(hit) + '</span><small>' +
       html([hit.type, hit.source === "legacy" ? "Original workbook" : "", hit.detail].filter(Boolean).join(" · ")) +
       '</small></button>').join("");
   }

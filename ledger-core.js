@@ -132,6 +132,18 @@ const TSWLedger = (() => {
       applyObservation(row, observation);
       confirmedRows.push(row);
     }
+    for (const service of bundle.hudServices || []) {
+      const original = legacyByKey.get(service.key);
+      const name = timetables.get(service.timetableId)?.name || service.section ||
+        original?.[2] || "HUD timetable · variant unknown";
+      const row = [service.key, service.route, name, service.code, service.start.slice(0, 5)];
+      Object.assign(row, {
+        id: service.key, timetableId: service.timetableId, title: service.title,
+        durationMinutes: service.durationMinutes, locomotives: [], hudListing: true,
+        points: service.points, sourceUrl: bundle.hudCrosscheck.sourceUrl, hud: service,
+      });
+      confirmedRows.push(row);
+    }
     for (const original of confirmedRows) {
       if (currentByKey.has(original[0])) {
         applyObservation(currentByKey.get(original[0]), bundle.observations?.[original[0]]);
@@ -141,7 +153,8 @@ const TSWLedger = (() => {
       row[2] = variantNames.get(slot(row[1], row[2])) || row[2];
       currentRows.push(row);
       currentByKey.set(row[0], row);
-      confirmedSlots.set(serviceSlot(row), row);
+      const identity = serviceSlot(row);
+      confirmedSlots.set(identity, confirmedSlots.has(identity) ? null : row);
       const variants = currentRoutes[row[1]].variants;
       if (!variants.some(v => v.name === row[2])) variants.push({name: row[2]});
     }

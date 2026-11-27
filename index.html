@@ -40,6 +40,7 @@
           <div id="globalList"></div>
           <div class="rowflex">
             <button type="button" class="secondary" id="moreResults">Show more</button>
+            <button type="button" class="secondary" id="logSearch">Add an unlisted service</button>
             <button type="button" class="secondary" id="closeResults">Clear search</button>
           </div>
         </div>
@@ -194,11 +195,11 @@
           required
           placeholder="e.g. 2A15 London Victoria – Brighton"
         /><label for="mTime">Departure time (optional)</label
-        ><input id="mTime" type="time" /><label for="mLoco"
+        ><input id="mTime" type="time" /><label class="check-label"><input id="mCompleted" type="checkbox" checked /> Already completed</label><label for="mLoco"
           >Locomotive (optional)</label
         ><input id="mLoco" type="text" placeholder="Exact in-game loco name" />
         <div class="rowflex">
-          <button class="primary" type="submit">Save as completed</button
+          <button class="primary" type="submit">Save service</button
           ><button type="button" id="cancelManual">Cancel</button>
         </div>
       </form>

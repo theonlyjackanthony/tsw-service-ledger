@@ -327,6 +327,7 @@
         .join("") || '<p class="muted">No matching routes.</p>';
   }
   function availabilityText(row) {
+    if (row.hudListing) return "HUD-listed · PS5 and DLC requirements unverified";
     if (row.retired) return "Retired from this catalogue";
     if (row[0].startsWith("manual:")) return "Manually logged";
     const status = ledger.availability(row, state);
@@ -336,7 +337,9 @@
   }
   function serviceInfo(row) {
     const locos = row.locomotives ?? [];
-    const endpoint = [row.from, row.to].filter(Boolean).map(html).join(" → ");
+    const endpoint = row.hudListing && row.points?.length
+      ? "Recorded locations · " + [row.points[0], row.points.at(-1)].map(html).join(" → ")
+      : [row.from, row.to].filter(Boolean).map(html).join(" → ");
     const formation = row.formation
       ? " · Formation " + html(row.formation)
       : "";
@@ -363,10 +366,10 @@
   }
   function evidenceDetails(row) {
     if (row.hud || row.observation) {
-      const evidence = row.hud ? "Original workbook · " + sourceLink(row.sourceUrl, "TSW HUD timetable database") +
+      const evidence = row.hud ? (row.hudListing ? "" : "Original workbook · ") + sourceLink(row.sourceUrl, "TSW HUD timetable database") +
         " · record " + html(row.hud.hudId) + " · start " + html(row.hud.start) : (row.sourceUrl ? sourceLink(row.sourceUrl, "Published service") : "");
       return '<details class="evidence"><summary>Service sources</summary>' +
-        evidence + (row.observation ? "<div>" + html(row.observation) + "</div>" : "") +
+        evidence + (row.points?.length ? "<div>Recorded locations · " + html(row.points.join(" → ")) + "</div>" : "") + (row.observation ? "<div>" + html(row.observation) + "</div>" : "") +
         (row.observationUrl ? sourceLink(row.observationUrl, "Developer’s layer notes") : "") + "</details>";
     }
     if (!row.sourceUrl) return "";
@@ -420,7 +423,7 @@
   }
   function searchTerms(row) {
     return [row[3], row[4], row.title, row.from, row.to, row.formation,
-      ...(row.locomotives ?? []), state.done[row[0]]?.loco].join(" ").toLowerCase();
+      ...(row.points || []), ...(row.locomotives ?? []), state.done[row[0]]?.loco].join(" ").toLowerCase();
   }
 
   function renderServices() {
@@ -638,7 +641,7 @@
     $("coverage").textContent =
       state.source === "legacy"
         ? "Original workbook · partial coverage. Counts cover listed services. Locomotive and DLC assignments require separate evidence."
-        : "Main checklist · partial coverage. Includes published passenger services, cross-checked workbook entries and services verified in game.";
+        : "Main checklist · partial coverage. Counts cover listed services. HUD entries show their source and PS5 verification status.";
   }
 
   function setView(next) {
@@ -738,9 +741,9 @@
           }
         }
         const endpoints = [row.from, row.to].filter(Boolean).join(" → ");
-        const detail = [name, variant, endpoints, ...new Set(locos)].filter(Boolean).join(" · ");
+        const detail = [name, variant, row.hudListing ? "HUD listing · PS5 unverified" : "", endpoints, ...new Set(locos)].filter(Boolean).join(" · ");
         add("Service", "service:" + id, source, route, variant, id, row.title || code, detail,
-          [code, time, row.formation, ...locos.map(ledger.locoName)].join(" "), time, [code, time, endpoints, row.formation, ...locos].join(" "));
+          [code, time, ...(row.points || []), row.formation, ...locos.map(ledger.locoName)].join(" "), time, [code, time, endpoints, row.formation, ...locos].join(" "));
       }
     }
     return entries;
@@ -1011,20 +1014,24 @@
     persist();
   };
   $("cancelLoco").onclick = () => $("locoDialog").close();
-  $("manual").onclick = () => {
+  function openManual(name, fromSearch) {
     const keys = Object.keys(routes).sort((a, b) =>
       routeName(a).localeCompare(routeName(b)),
     );
     opts(
       $("mRoute"),
-      keys.map((key) => [key, routeName(key)]),
-      $("route").value,
+      [["", "Choose a route"], ...keys.map((key) => [key, routeName(key)])],
+      fromSearch ? "" : $("route").value,
     );
-    $("mName").value = "";
+    $("mName").value = name;
+    $("mCompleted").checked = !fromSearch;
     $("mTime").value = "";
     $("mLoco").value = "";
+    $("mLoco").disabled = !$("mCompleted").checked;
     $("manualDialog").showModal();
-  };
+  }
+  $("manual").onclick = () => openManual("", false);
+  $("logSearch").onclick = () => openManual($("globalQuery").value.trim(), true);
   $("manualForm").onsubmit = (event) => {
     event.preventDefault();
     const key = $("mRoute").value,
@@ -1037,10 +1044,9 @@
     const id =
       "manual:" + Date.now() + ":" + Math.random().toString(36).slice(2);
     state.manual.push([id, key, "Manually logged", name, $("mTime").value]);
-    state.done[id] = {
-      loco: $("mLoco").value.trim(),
-      date: new Date().toISOString(),
-    };
+    if ($("mCompleted").checked) {
+      state.done[id] = {loco: $("mLoco").value.trim(), date: new Date().toISOString()};
+    }
     $("manualDialog").close();
     ledger.reconcile(state);
     catalogue();
@@ -1048,6 +1054,7 @@
     persist();
   };
   $("mName").oninput = () => $("mName").setCustomValidity("");
+  $("mCompleted").onchange = () => { $("mLoco").disabled = !$("mCompleted").checked; };
   $("cancelManual").onclick = () => $("manualDialog").close();
   $("shiftForm").onsubmit = (event) => {
     event.preventDefault();

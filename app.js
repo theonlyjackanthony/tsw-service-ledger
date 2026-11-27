@@ -359,7 +359,12 @@
     );
   }
   function evidenceDetails(row) {
-    if (row.observation) return '<details class="evidence"><summary>Service sources</summary>' + html(row.observation) + "</details>";
+    if (row.hud || row.observation) {
+      const evidence = row.hud ? sourceLink(row.sourceUrl, "TSW HUD timetable database") +
+        " · record " + html(row.hud.hudId) + " · start " + html(row.hud.start) : "";
+      return '<details class="evidence"><summary>Service sources</summary>' +
+        evidence + (row.observation ? "<div>" + html(row.observation) + "</div>" : "") + "</details>";
+    }
     if (!row.sourceUrl) return "";
     const links = [sourceLink(row.sourceUrl, "Published service")];
     let products = "";

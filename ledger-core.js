@@ -93,9 +93,14 @@ const TSWLedger = (() => {
         formation: current?.formation, locomotives: current?.locomotives || [],
         rule: current?.rule, sourceUrl: current?.sourceUrl,
       });
+      const hud = bundle.hudCrosscheck?.records[row[0]];
+      if (hud) {
+        row.hud = hud;
+        row.sourceUrl = bundle.hudCrosscheck.sourceUrl;
+      }
       const observation = bundle.observations?.[row[0]];
       if (observation) Object.assign(row, {
-        from: observation.from, to: observation.to, formation: observation.formation,
+        from: observation.from, to: observation.to, formation: observation.formation, durationMinutes: observation.durationMinutes ?? null,
         locomotives: [observation.locomotive], title: observation.title, observation: observation.note,
       });
       legacyByKey.set(row[0], row);

@@ -42,6 +42,20 @@
   let searchIndex = null;
   let searchHits = [];
   let searchLimit = 15;
+  let editingOwnership = false;
+  const scrollPositions = new Map();
+
+  function icon(name) {
+    return '<svg class="icon" aria-hidden="true"><use href="#i-' + name + '"/></svg>';
+  }
+
+  function openSettings() {
+    $("settingsDialog").showModal();
+  }
+  document.querySelectorAll("[data-settings]").forEach(button => {
+    button.onclick = openSettings;
+  });
+  $("closeSettings").onclick = () => $("settingsDialog").close();
 
   function readState(raw) {
     const saved = JSON.parse(raw);
@@ -175,7 +189,18 @@
       ],
       reset ? "" : $("driven").value,
     );
+    showDriveOverride();
   }
+  function toggleTimetable(expanded) {
+    $("timetableOptions").hidden = !expanded;
+    $("changeTimetable").setAttribute("aria-expanded", String(expanded));
+    $("changeTimetable").textContent = expanded ? "Done" : "Change timetable";
+  }
+  $("changeTimetable").onclick = () => toggleTimetable($("timetableOptions").hidden);
+  function showDriveOverride() {
+    $("driveOverride").textContent = $("driven").value ? "Next completion · " + $("driven").value : "";
+  }
+  $("driven").onchange = showDriveOverride;
   function routeOpts(preferred = $("route").value) {
     const keys = routeKeys();
     const active = keys.includes(preferred)
@@ -201,9 +226,9 @@
   }
   function bar(done, total) {
     return (
-      '<div class="bar" aria-hidden="true"><i style="width:' +
+      '<span class="bar" aria-hidden="true"><i style="width:' +
       (total ? (done / total) * 100 : 0) +
-      '%"></i></div>'
+      '%"></i></span>'
     );
   }
   function tally() {
@@ -262,9 +287,15 @@
         '</strong><span>' + label + '</span>' + bar(done, denominator) + '</div>';
     }
     $("metrics").innerHTML =
-      metric("Listed services completed", total.done, total.total) +
+      metric("Services completed", total.done, total.total) +
       metric("Routes driven", driven, keys.length) +
-      metric("Listed locomotives driven", used.size, listedLocos.size);
+      metric("Locos driven", used.size, listedLocos.size);
+    const scopeLabel = (state.source === "legacy" ? "Workbook" : "Main checklist") +
+      (state.owned ? " · Owned" : " · All routes");
+    for (const button of document.querySelectorAll(".scope-button")) {
+      button.innerHTML = icon("settings") + scopeLabel;
+      button.setAttribute("aria-label", "Change catalogue settings, " + scopeLabel);
+    }
     $("scope").textContent =
       fmt(keys.length) +
       " routes · " +
@@ -286,6 +317,7 @@
           routeName(a).localeCompare(routeName(b)),
       );
     }
+    $("routeCount").textContent = fmt(found.length);
     $("routeList").innerHTML =
       found
         .map((key) => {
@@ -301,28 +333,23 @@
             route.region,
             route.variants.length +
               (route.variants.length === 1
-                ? " timetable variant"
-                : " timetable variants"),
-            ownership,
+                ? " timetable"
+                : " timetables"),
+            state.owned ? "" : ownership,
           ].filter(Boolean);
           const shortName = routeName(key).split("\n")[0];
-          return (
-            '<div class="rline"><div class="route-info"><button class="route-title route-button" data-route="' +
-            html(key) +
-            '">' +
-            html(shortName) +
-            '</button><div class="muted">' +
-            html(meta.join(" · ")) +
-            '</div><button class="secondary" data-own="' +
-            html(key) +
-            '">' +
-            (owned(key) ? "Mark not owned" : "Mark owned") +
-            '</button></div><div class="route-progress">' +
-            (t.total || t.excluded
-              ? progress(t)
-              : "<span>No imported listings</span>") +
-            "</div></div>"
-          );
+          const ownershipButton = editingOwnership
+            ? '<button class="secondary" data-own="' + html(key) + '" aria-label="' +
+              html((owned(key) ? "Mark not owned: " : "Mark owned: ") + shortName) + '">' +
+              (owned(key) ? "Mark not owned" : "Mark owned") + "</button>"
+            : "";
+          return '<div class="route-record"><button type="button" class="route-button route-link" data-route="' +
+            html(key) + '"><span class="route-code">' + (/^[a-z0-9-]{1,7}$/i.test(key) ? html(key) : icon("routes")) +
+            '</span><span class="route-info"><span class="route-title">' + html(shortName) +
+            '</span><span class="muted">' + html(meta.join(" · ")) +
+            '</span></span><span class="route-progress">' +
+            (t.total || t.excluded ? progress(t) : "No imported listings") +
+            '</span>' + icon("arrow") + '</button>' + ownershipButton + '</div>';
         })
         .join("") || '<p class="muted">No matching routes.</p>';
   }
@@ -337,7 +364,7 @@
     if (status === "missing") return "Required DLC missing";
     return "DLC requirements unknown";
   }
-  function serviceInfo(row) {
+  function serviceInfo(row, checklist = false) {
     const locos = row.locomotives ?? [];
     const endpoint = row.hudListing && row.points?.length
       ? "Recorded locations · " + [row.points[0], row.points.at(-1)].map(html).join(" → ")
@@ -348,7 +375,7 @@
     const duration = Number.isFinite(row.durationMinutes)
       ? " · " + fmt(row.durationMinutes) + " min"
       : "";
-    return (
+    const summary = (
       (endpoint ? '<div class="route-endpoints">' + endpoint + "</div>" : "") +
       "<small>" +
       html(row[2]) +
@@ -362,9 +389,13 @@
         : "") +
       '">' +
       html(availabilityText(row)) +
-      "</small>" +
-      evidenceDetails(row)
+      "</small>"
     );
+    if (!checklist) return summary + evidenceDetails(row);
+    const id = html(row[0]);
+    return summary + '<details class="service-more"><summary>Service details</summary>' +
+      evidenceDetails(row) + '<button type="button" class="secondary" data-unavailable="' +
+      id + '">' + (state.unavailable[row[0]] ? "Restore" : "Not playable") + '</button></details>';
   }
   function evidenceDetails(row) {
     if (row.source === "freight" || row.source === "wiki" || row.source === "gameplay") {
@@ -454,13 +485,15 @@
     const sourceUrl = routes[key]?.variants.find(
       (v) => v.name === variant,
     )?.sourceUrl;
+    $("variantName").textContent = variant || "All variants";
     $("variantSummary").innerHTML =
       '<div class="progress-inline">' +
       (scope.length
         ? progress(totals)
         : '<span class="progress-label">No imported listings</span>') +
-      "</div>" +
-      (sourceUrl ? sourceLink(sourceUrl, "View source timetable") : "");
+      "</div>";
+    $("timetableSources").innerHTML = sourceUrl ? sourceLink(sourceUrl, "View source timetable") : "";
+    $("alternativeMatches").replaceChildren();
     const matched = scope
       .filter((row) => {
         const [id] = row;
@@ -512,7 +545,7 @@
             '><div><div class="sname">' +
             html(row.title || row[3]) +
             "</div>" +
-            serviceInfo(row) +
+            serviceInfo(row, true) +
             (complete
               ? "<small>" +
                 (complete.loco
@@ -524,11 +557,7 @@
               : "") +
             '</div><span class="time">' +
             html(row[4] || "—") +
-            '</span><button class="secondary" data-unavailable="' +
-            html(id) +
-            '">' +
-            (unavailable ? "Restore" : "Not playable") +
-            "</button></div>"
+            '</span></div>'
           );
         })
         .join("") ||
@@ -538,7 +567,8 @@
       !row.manual && !row.retired && (!q || searchTerms(row).includes(q)));
     if (otherRows.length && (!matched.length || !q)) {
       const name = other === "legacy" ? "original workbook" : "main checklist";
-      $("variantSummary").innerHTML += ' <button class="secondary" data-other-source="' +
+      const destination = q && !matched.length ? $("alternativeMatches") : $("timetableSources");
+      destination.innerHTML += ' <button class="secondary" data-other-source="' +
         other + '">Browse ' + fmt(otherRows.length) + (q ? ' matching' : '') +
         ' records in ' + name + '</button>';
     }
@@ -657,16 +687,10 @@
         : "Main checklist · partial coverage. Counts cover listed services. HUD entries show their source and PS5 verification status.";
   }
 
-  function setView(next) {
+  function setView(next, restorePosition = false) {
+    scrollPositions.set(view, window.scrollY);
     view = next;
     document.body.dataset.ledgerView = next;
-    for (const control of [
-      $("metrics"),
-      $("coverage"),
-      document.querySelector(".catalogue-controls"),
-    ]) {
-      control.classList.toggle("hidden", next === "shift");
-    }
     document.querySelectorAll("[data-view]").forEach((button) => {
       const selected = button.dataset.view === next;
       button.classList.toggle("active", selected);
@@ -676,6 +700,7 @@
       $(name + "Pane").classList.toggle("hidden", name !== next);
     }
     render();
+    window.scrollTo(0, restorePosition ? scrollPositions.get(next) || 0 : 0);
   }
 
   function persist() {
@@ -826,6 +851,15 @@
     }
   }
 
+  document.addEventListener("keydown", event => {
+    if (event.key === "Escape" && !$("globalResults").hidden && !document.querySelector("dialog[open]")) {
+      clearGlobalSearch();
+      $("globalQuery").focus();
+    }
+  });
+  document.addEventListener("pointerdown", event => {
+    if (!$("globalResults").hidden && !event.target.closest("#ledgerSearch, dialog")) clearGlobalSearch();
+  });
   $("globalQuery").oninput = () => {
     searchLimit = 15;
     findAcrossLedger();
@@ -850,6 +884,7 @@
   }
 
   function openChecklist(source, route, variant, id) {
+    toggleTimetable(false);
     selectSourceRoute(source, route);
     $("variant").value = variant;
     $("status").value = "all";
@@ -858,7 +893,7 @@
     page = 0;
     save();
     setView("services");
-    (id ? $("serviceList").querySelector("input") : $("route"))?.focus();
+    (id ? $("serviceList").querySelector("input") : $("changeTimetable"))?.focus();
   }
 
   function openShift() {
@@ -906,8 +941,8 @@
     refreshState();
     if (before !== JSON.stringify(state)) save();
   } catch (error) {
-    $("coverage").textContent =
-      "The timetable database could not be loaded. Keep this HTML, app.js, ledger-core.js, ledger.css and the data folder together.";
+    notice(
+      "The timetable database could not be loaded. Keep this HTML, app.js, ledger-core.js, ledger.css and the data folder together.");
     $("manual").disabled = true;
     $("routesPane").classList.add("hidden");
     document
@@ -926,7 +961,17 @@
     if (!button) return;
     const action = button.dataset;
     if (action.searchHit !== undefined) openSearchHit(searchHits[Number(action.searchHit)]);
-    else if (action.view) setView(action.view);
+    else if (action.view) setView(action.view, action.view === "routes");
+    else if (button.id === "manageRoutes") {
+      editingOwnership = !editingOwnership;
+      button.setAttribute("aria-pressed", String(editingOwnership));
+      button.textContent = editingOwnership ? "Finish editing" : "Edit ownership";
+      render();
+    } else if (action.duration !== undefined) {
+      $("shiftMin").value = "";
+      $("shiftMax").value = action.duration;
+      updateDuration();
+    }
     else if (action.otherSource) {
       const route = $("route").value;
       state.source = action.otherSource;
@@ -939,6 +984,7 @@
       page = 0;
       persist();
     } else if (action.route) {
+      toggleTimetable(false);
       selectedService = null;
       $("route").value = action.route;
       $("search").value = "";
@@ -1022,10 +1068,12 @@
   $("prev").onclick = () => {
     page--;
     renderServices();
+    $("serviceList").scrollIntoView({block: "start"});
   };
   $("next").onclick = () => {
     page++;
     renderServices();
+    $("serviceList").scrollIntoView({block: "start"});
   };
   $("locoForm").onsubmit = (event) => {
     event.preventDefault();
@@ -1098,14 +1146,17 @@
     if (result.getBoundingClientRect().bottom > window.innerHeight)
       result.scrollIntoView({ block: "nearest" });
   };
-  for (const id of ["shiftMin", "shiftMax"]) {
-    $(id).oninput = () => {
-      $("shiftMax").setCustomValidity("");
-      shift = null;
-      shiftAttempted = false;
-      renderShift();
-    };
+  function updateDuration() {
+    $("shiftMax").setCustomValidity("");
+    for (const button of document.querySelectorAll("[data-duration]")) {
+      const selected = $("shiftMin").value === "" && $("shiftMax").value === button.dataset.duration;
+      button.setAttribute("aria-pressed", String(selected));
+    }
+    shift = null;
+    shiftAttempted = false;
+    renderShift();
   }
+  $("shiftMin").oninput = $("shiftMax").oninput = updateDuration;
 
   // A second tab on the same browser can complete a service while this one is open.
   window.addEventListener("storage", (event) => {

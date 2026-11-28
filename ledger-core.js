@@ -122,7 +122,23 @@ const TSWLedger = (() => {
 
     const variantNames = new Map(routeLinks.legacyVariants.map(link =>
       [slot(link.legacyKey, link.variant), timetables.get(link.timetableId)?.name]));
+    const directory = bundle.gameTimetables || {};
     const workbookPatterns = new Map();
+    const directoryPatterns = new Map();
+    for (const [route, item] of Object.entries(directory)) {
+      for (const table of item.timetables) {
+        if (!table.workbook) continue;
+        const key = slot(route, table.workbook);
+        directoryPatterns.set(key, new RegExp(table.codePattern));
+        variantNames.set(key, table.name);
+      }
+    }
+    const workbookSlots = new Map();
+    for (const [, route, variant, code, time] of legacyRows) {
+      if (!directoryPatterns.has(slot(route, variant))) continue;
+      const key = slot(route, variant, code, time);
+      workbookSlots.set(key, (workbookSlots.get(key) || 0) + 1);
+    }
     for (const table of routeLinks.workbookTimetables || []) {
       const key = slot(table.legacyKey, table.variant);
       variantNames.set(key, table.name);
@@ -170,11 +186,14 @@ const TSWLedger = (() => {
       if (!variants.some(v => v.name === row[2])) variants.push({name: row[2]});
     }
 
-    // A photographed menu identifies the variant. Workbook timings keep their own evidence level.
+    // Retain workbook IDs for trips on independently documented timetables.
     for (const original of legacyRows) {
       const [id, route, variant, code] = original;
       const key = slot(route, variant);
-      if (!workbookPatterns.get(key)?.test(code) || currentByKey.has(id)) continue;
+      if (currentByKey.has(id)) continue;
+      const reviewedWorkbook = directoryPatterns.get(key)?.test(code) &&
+        workbookSlots.get(slot(route, variant, code, original[4])) === 1;
+      if (!reviewedWorkbook && !workbookPatterns.get(key)?.test(code)) continue;
       const row = Object.assign([...original], original, {source: "workbook"});
       row[2] = variantNames.get(key);
       currentRows.push(row);
@@ -185,7 +204,7 @@ const TSWLedger = (() => {
     const occupied = new Set(currentRows.map(row => slot(row[1], row[2], row[3].toUpperCase(), row[4])));
     for (const service of bundle.additionalServices || []) {
       const {id, route, variant, code, start} = service;
-      const name = timetables.get(service.timetableId)?.name || variant;
+      const name = timetables.get(service.timetableId)?.name || service.menuVariant || variant;
       const identity = slot(route, name, code.toUpperCase(), start);
       if (currentByKey.has(id) || occupied.has(identity)) continue;
       const row = Object.assign([id, route, name, code, start], service, {
@@ -199,6 +218,41 @@ const TSWLedger = (() => {
       if (!variants.some(v => v.name === name)) variants.push({name});
     }
 
+    // The directory describes timetable choices independently of service-feed coverage.
+    const menuNames = new Map();
+    for (const [route, item] of Object.entries(directory)) {
+      const existing = currentRoutes[route].variants;
+      const documented = item.timetables.map(table => {
+        const published = timetables.get(table.timetableId);
+        for (const alias of [published?.name, table.workbook, ...(table.aliases || [])].filter(Boolean)) {
+          menuNames.set(slot(route, alias), table.name);
+        }
+        return {...table, id: published?.id, directoryUrl: item.sourceUrl, sourceUrl: published?.sourceUrl};
+      });
+      for (const group of ["HUD timetable · variant unknown", ...(item.unassignedGroups || [])]) {
+        menuNames.set(slot(route, group), "Timetable unconfirmed");
+      }
+      const names = new Set(documented.map(table => table.name));
+      for (const prior of existing) {
+        const name = menuNames.get(slot(route, prior.name)) || prior.name;
+        if (!names.has(name)) {
+          documented.push({...prior, name, unassigned: name === "Timetable unconfirmed"});
+          names.add(name);
+        }
+      }
+      currentRoutes[route].variants = documented;
+    }
+    const menuName = (route, name) => menuNames.get(slot(route, name)) || name;
+    const ambiguousSlots = new Set();
+    const slotVariants = new Map();
+    for (const row of currentRows) {
+      row[2] = menuName(row[1], row[2]);
+      if (!directory[row[1]]) continue;
+      const key = serviceSlot(row);
+      if (slotVariants.has(key) && slotVariants.get(key) !== row[2]) ambiguousSlots.add(key);
+      slotVariants.set(key, row[2]);
+    }
+
     function reconcile(state) {
       // A manually logged headcode and departure can now have a unique corroborated workbook row.
       const manualLinks = new Map();
@@ -209,7 +263,9 @@ const TSWLedger = (() => {
       }
       for (const [key, manual] of manualSlots) {
         const row = confirmedSlots.get(key);
-        if (manual && row && manual[0].startsWith("manual:") &&
+        if (manual && row && !ambiguousSlots.has(key) &&
+            (manual[2] === "Manually logged" || menuName(manual[1], manual[2]) === row[2]) &&
+            manual[0].startsWith("manual:") &&
             !state.done[row[0]] && !state.unavailable[row[0]]) manualLinks.set(manual[0], row[0]);
       }
       if (manualLinks.size) {
@@ -253,10 +309,11 @@ const TSWLedger = (() => {
         id: row[0], locomotives: [], manual: true, durationMinutes: null,
       }));
       if (source === "legacy") return legacyRows.concat(manualRows);
+      for (const row of manualRows) row[2] = menuName(row[1], row[2]);
       const rows = currentRows.concat(manualRows);
       for (const [key, record] of Object.entries(state.records || {})) {
         if (currentByKey.has(key) || !(state.done[key] || state.unavailable[key])) continue;
-        const row = [key, record.routeKey, record.variant, record.code, record.time];
+        const row = [key, record.routeKey, menuName(record.routeKey, record.variant), record.code, record.time];
         rows.push(Object.assign(row, { ...record, retired: true, locomotives: [] }));
       }
       return rows;
@@ -304,7 +361,9 @@ const TSWLedger = (() => {
         if ((minMinutes != null && duration < minMinutes) || (maxMinutes != null && duration > maxMinutes)) return false;
         const old = legacyVariants.get(row.timetableId);
         if (old && uncertain.has(slot(old.legacyKey, old.variant, row[3]))) return false;
-        return !manual.some(log => log[1] === row[1] && (!log[4] || log[4] === row[4]) &&
+        return !manual.some(log => log[1] === row[1] &&
+          (log[2] === "Manually logged" || menuName(log[1], log[2]) === row[2]) &&
+          (!log[4] || log[4] === row[4]) &&
           log[3].trim().toLowerCase() === row[3].toLowerCase());
       });
       return eligible.length ? eligible[Math.floor(random() * eligible.length)] : null;

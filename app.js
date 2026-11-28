@@ -329,10 +329,11 @@
               : owned(key) === false
                 ? "Marked unowned"
                 : "Ownership unknown";
+          const timetableCount = route.variants.filter(v => !v.unassigned).length;
           const meta = [
             route.region,
-            route.variants.length +
-              (route.variants.length === 1
+            timetableCount +
+              (timetableCount === 1
                 ? " timetable"
                 : " timetables"),
             state.owned ? "" : ownership,
@@ -354,6 +355,9 @@
         .join("") || '<p class="muted">No matching routes.</p>';
   }
   function availabilityText(row) {
+    if (row.source === "serviceReference") return row[4] ? "Documented service · PS5 unverified" : "Documented service · departure time unlisted · PS5 unverified";
+    if (row.source === "communitySheet") return "Community timetable · PS5 service unverified";
+    if (row.source === "passengerVariant") return "Published variant timing · PS5 service unverified";
     if (row.source === "workbook") return "Original workbook · PS5 service unverified";
     if (row.source === "freight") return "Freight timetable · first on-route time · PS5 unverified";
     if (row.source === "wiki" || row.source === "gameplay") return "Community listing · PS5 unverified";
@@ -416,6 +420,10 @@
       return '<details class="evidence"><summary>Service sources</summary>' +
         evidence + (row.points?.length ? "<div>Recorded locations · " + html(row.points.join(" → ")) + "</div>" : "") + (row.observation ? "<div>" + html(row.observation) + "</div>" : "") +
         (row.observationUrl ? sourceLink(row.observationUrl, "Developer’s layer notes") : "") + "</details>";
+    }
+    if (["communitySheet", "passengerVariant", "serviceReference"].includes(row.source)) {
+      return '<details class="evidence"><summary>Service sources</summary>' +
+        sourceLink(row.sourceUrl, row.referenceLabel || (row.source === "communitySheet" ? "WonterRail’s community timetable" : "Publisher’s service and variant notes")) + "</details>";
     }
     if (!row.sourceUrl) return "";
     const links = [sourceLink(row.sourceUrl, "Published service")];
@@ -483,9 +491,7 @@
     $("serviceTitle").textContent = key
       ? routeName(key).split("\n")[0]
       : "Service checklist";
-    const sourceUrl = routes[key]?.variants.find(
-      (v) => v.name === variant,
-    )?.sourceUrl;
+    const table = routes[key]?.variants.find(v => v.name === variant);
     $("variantName").textContent = variant || "All variants";
     $("variantSummary").innerHTML =
       '<div class="progress-inline">' +
@@ -493,7 +499,13 @@
         ? progress(totals)
         : '<span class="progress-label">No imported listings</span>') +
       "</div>";
-    $("timetableSources").innerHTML = sourceUrl ? sourceLink(sourceUrl, "View source timetable") : "";
+    const sources = [];
+    if (table?.directoryUrl) {
+      sources.push(sourceLink(table.directoryUrl, "Dovetail timetable entry"));
+      if (table.stockExamples?.length) sources.push("Additional playable stock listed by Dovetail · " + html(table.stockExamples.join(", ")));
+    }
+    if (table?.sourceUrl) sources.push(sourceLink(table.sourceUrl, "View source timetable"));
+    $("timetableSources").innerHTML = sources.join(" · ");
     $("alternativeMatches").replaceChildren();
     const matched = scope
       .filter((row) => {
@@ -562,7 +574,9 @@
           );
         })
         .join("") ||
-      '<p class="muted">No matching services. Change the filters or log an unlisted service.</p>';
+      (table?.directoryUrl && !scope.length
+        ? '<p class="muted">This timetable is documented. Its service list has yet to be imported. You can log a service here.</p>'
+        : '<p class="muted">No matching services. Change the filters or log an unlisted service.</p>');
     const other = state.source === "current" ? "legacy" : "current";
     const otherRows = ledger.services(other, state).filter(row => row[1] === key &&
       !row.manual && !row.retired && (!q || searchTerms(row).includes(q)));
@@ -762,8 +776,10 @@
       for (const [route, item] of Object.entries(collection)) {
         const name = item.name.split("\n")[0].replace(/\s+Route Add-On\s*$/i, "");
         add("Route", "route:" + route, source, route, "", "", name, route);
-        for (const {name: variant} of item.variants)
-          add("Timetable", JSON.stringify([route, variant]), source, route, variant, "", variant, name);
+        for (const table of item.variants) {
+          if (!table.unassigned) add("Timetable", JSON.stringify([route, table.name]), source, route, table.name,
+            "", table.name, name, table.sourceName || "");
+        }
         for (const alias of item.locos || []) {
           const loco = ledger.locoName(alias);
           add("Locomotive", "loco:" + loco, source, route, "", "", loco, "Locomotive progress", alias);
@@ -1086,6 +1102,11 @@
     persist();
   };
   $("cancelLoco").onclick = () => $("locoDialog").close();
+  function manualVariants(preferred = "") {
+    const options = (routes[$("mRoute").value]?.variants || []).filter(table => !table.unassigned);
+    opts($("mVariant"), [["", "Unspecified"], ...options.map(table => [table.name, table.name])], preferred);
+  }
+  $("mRoute").onchange = () => manualVariants();
   function openManual(name, fromSearch) {
     const keys = Object.keys(routes).sort((a, b) =>
       routeName(a).localeCompare(routeName(b)),
@@ -1095,6 +1116,7 @@
       [["", "Choose a route"], ...keys.map((key) => [key, routeName(key)])],
       fromSearch ? "" : $("route").value,
     );
+    manualVariants(fromSearch ? "" : $("variant").value);
     $("mName").value = name;
     $("mCompleted").checked = !fromSearch;
     $("mTime").value = "";
@@ -1115,7 +1137,7 @@
     }
     const id =
       "manual:" + Date.now() + ":" + Math.random().toString(36).slice(2);
-    state.manual.push([id, key, "Manually logged", name, $("mTime").value]);
+    state.manual.push([id, key, $("mVariant").value || "Manually logged", name, $("mTime").value]);
     if ($("mCompleted").checked) {
       state.done[id] = {loco: $("mLoco").value.trim(), date: new Date().toISOString()};
     }

@@ -80,6 +80,11 @@ const TSWLedger = (() => {
         sourceUrl: [timetable.sourceUrl, sheet, table, train].join('/'),
         sourceRowCount: service.sourceRowCount || 1,
       });
+      if (service.origin && service.destination) {
+        row.origin = service.origin;
+        row.destination = service.destination;
+        row.title = service.code + ": " + service.origin + " - " + service.destination;
+      }
       const driving = bundle.drivingTimes?.[service.id];
       if (driving) {
         row.stationDeparture = row[4];

@@ -13,7 +13,7 @@
   const panel = document.createElement("div");
   panel.className = "panel";
   const title = document.createElement("h1");
-  title.textContent = "Service Ledger";
+  title.textContent = "Driver’s Companion";
   const message = document.createElement("p");
   message.setAttribute("role", "status");
   const form = document.createElement("form");
@@ -130,7 +130,7 @@
       sizes: size + "x" + size, type: "image/png"
     });
     const manifest = {
-      id: base.href, name: "TSW Service Ledger", short_name: "TSW Ledger", lang: "en-GB",
+      id: base.href, name: "TSW Driver’s Companion", short_name: "TSW Companion", lang: "en-GB",
       start_url: startUrl.href, scope: base.href, display: "standalone",
       background_color: "#10191c", theme_color: "#10191c", icons: [icon(192), {...icon(512), purpose: "any maskable"}]
     };

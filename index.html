@@ -3,11 +3,11 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-    <title>TSW Service Ledger</title>
+    <title>TSW Driver’s Companion</title>
     <meta name="referrer" content="no-referrer">
     <meta name="robots" content="noindex,nofollow">
     <meta name="theme-color" content="#10191c">
-    <meta name="apple-mobile-web-app-title" content="TSW Ledger">
+    <meta name="apple-mobile-web-app-title" content="TSW Companion">
     <meta name="apple-mobile-web-app-capable" content="yes">
     <link rel="manifest" href="./manifest.webmanifest">
     <link rel="apple-touch-icon" sizes="180x180" href="./icons/apple-touch-icon.png">
@@ -15,50 +15,65 @@
     <link rel="stylesheet" href="ledger.css" />
   </head>
   <body>
-    <main id="ledgerGate"><h1>Service Ledger</h1><p>Opening your ledger…</p></main>
+    <main id="ledgerGate"><h1>Driver’s Companion</h1><p>Opening your ledger…</p></main>
     <main hidden>
       <svg class="symbols" xmlns="http://www.w3.org/2000/svg" aria-hidden="true"><defs><symbol id="i-train" viewBox="0 0 24 24"><rect x="5" y="3" width="14" height="15" rx="4"/><path d="M5 10h14M12 4v6M8 18l-3 4m11-4 3 4M7 20h10"/><path d="M8 14h1m6 0h1"/></symbol><symbol id="i-routes" viewBox="0 0 24 24"><circle cx="5" cy="17" r="2.5"/><circle cx="19" cy="7" r="2.5"/><path d="M7.5 17h5a3 3 0 0 0 0-6h-2a2 2 0 0 1 0-4h6"/></symbol><symbol id="i-services" viewBox="0 0 24 24"><rect x="4" y="4" width="16" height="17" rx="2"/><path d="M8 2v4m8-4v4M4 9h16m-12 4h2m3 0h3m-8 4h2m3 0h3"/></symbol><symbol id="i-locos" viewBox="0 0 24 24"><path d="M3 16V7h8l2 4h5l3 3v3H3zm4-6v2h3"/><circle cx="7" cy="18" r="2"/><circle cx="17" cy="18" r="2"/></symbol><symbol id="i-shift" viewBox="0 0 24 24"><circle cx="12" cy="13" r="8"/><path d="M12 9v4l3 2M9 2h6m-3 0v3m6 2 2-2"/></symbol><symbol id="i-search" viewBox="0 0 24 24"><circle cx="10.5" cy="10.5" r="6.5"/><path d="m16 16 5 5"/></symbol><symbol id="i-plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></symbol><symbol id="i-settings" viewBox="0 0 24 24"><path d="M4 6h9m4 0h3M4 12h3m4 0h9M4 18h11m4 0h1"/><circle cx="15" cy="6" r="2"/><circle cx="9" cy="12" r="2"/><circle cx="17" cy="18" r="2"/></symbol><symbol id="i-close" viewBox="0 0 24 24"><path d="m6 6 12 12M18 6 6 18"/></symbol><symbol id="i-arrow" viewBox="0 0 24 24"><path d="m9 5 7 7-7 7"/></symbol></defs></svg>
-      <aside class="rail">
-        <div class="brand"><span class="brand-mark"><svg class="icon" aria-hidden="true"><use href="#i-train"/></svg></span><div>Service Ledger<small>Train Sim World 7 · PS5</small></div></div>
-        <nav class="tabs" aria-label="Ledger sections"><button type="button" data-view="routes" aria-controls="routesPane"><svg class="icon" aria-hidden="true"><use href="#i-routes"/></svg><span>Routes</span></button><button type="button" data-view="services" aria-controls="servicesPane"><svg class="icon" aria-hidden="true"><use href="#i-services"/></svg><span>Services</span></button><button type="button" data-view="locos" aria-controls="locosPane"><svg class="icon" aria-hidden="true"><use href="#i-locos"/></svg><span>Locomotives</span></button><button type="button" data-view="shift" aria-controls="shiftPane"><svg class="icon" aria-hidden="true"><use href="#i-shift"/></svg><span>Shifts</span></button></nav>
-        <button class="rail-settings" type="button" data-settings><svg class="icon" aria-hidden="true"><use href="#i-settings"/></svg> Ledger settings</button>
-      </aside>
+      <header class="mast">
+        <div class="brand"><span class="brand-mark"><svg class="icon" aria-hidden="true"><use href="#i-train"/></svg></span><div>Driver’s Companion<small>Train Sim World 7 · PS5</small></div></div>
+        <nav class="tabs" aria-label="Companion sections"><button type="button" data-view="cab" aria-controls="cabPane"><svg class="icon" aria-hidden="true"><use href="#i-train"/></svg><span>Cab</span></button><button type="button" id="openLibrary"><svg class="icon" aria-hidden="true"><use href="#i-services"/></svg><span>Timetables</span></button><button type="button" data-view="journal" aria-controls="journalPane"><svg class="icon" aria-hidden="true"><use href="#i-routes"/></svg><span>Logbook</span></button></nav>
+        <button type="button" class="icon-button" data-settings aria-label="Companion settings"><svg class="icon" aria-hidden="true"><use href="#i-settings"/></svg></button>
+      </header>
       <div class="workspace">
-      <header class="topbar">
-        <div class="mobile-brand"><svg class="icon" aria-hidden="true"><use href="#i-train"/></svg> Service Ledger</div>
+      <div class="library-tools hidden" id="libraryTools">
+        <div class="library-heading"><h1>Timetable room</h1><button class="primary" id="manual" aria-label="Log unlisted service"><svg class="icon" aria-hidden="true"><use href="#i-plus"/></svg> Log service</button></div>
         <section id="ledgerSearch" aria-label="Ledger search">
           <label class="sr-only" for="globalQuery">Search the whole ledger</label>
-          <div class="search-field"><svg class="icon" aria-hidden="true"><use href="#i-search"/></svg><input type="search" id="globalQuery" autocomplete="off" placeholder="Search the ledger" aria-controls="globalResults" /></div>
+          <div class="search-field"><svg class="icon" aria-hidden="true"><use href="#i-search"/></svg><input type="search" id="globalQuery" autocomplete="off" placeholder="Find a route, station or headcode" aria-controls="globalResults" /></div>
           <div id="globalResults" hidden>
             <div class="result-head"><p id="globalCount" class="muted" role="status"></p><button type="button" class="secondary" id="closeResults">Clear</button></div>
             <div id="globalList"></div>
             <div class="rowflex result-actions"><button type="button" class="secondary" id="moreResults">Show more</button><button type="button" class="secondary" id="logSearch">Add an unlisted service</button></div>
           </div>
         </section>
-        <button class="primary" id="manual" aria-label="Log unlisted service"><svg class="icon" aria-hidden="true"><use href="#i-plus"/></svg> Log service</button>
-        <button class="icon-button mobile-settings" type="button" data-settings aria-label="Ledger settings"><svg class="icon" aria-hidden="true"><use href="#i-settings"/></svg></button>
-      </header>
+        <nav class="library-tabs" aria-label="Timetable sections"><button type="button" data-view="routes" aria-controls="routesPane"><svg class="icon" aria-hidden="true"><use href="#i-routes"/></svg><span>Routes</span></button><button type="button" data-view="services" aria-controls="servicesPane"><svg class="icon" aria-hidden="true"><use href="#i-services"/></svg><span>Services</span></button><button type="button" data-view="locos" aria-controls="locosPane"><svg class="icon" aria-hidden="true"><use href="#i-locos"/></svg><span>Locomotives</span></button></nav>
+      </div>
       <div class="content">
       <div id="driveReceipt" role="status" aria-live="polite" aria-atomic="true"></div>
       <p class="notice hidden" id="storageNotice" role="alert"></p>
-      <section class="panel" id="routesPane" aria-labelledby="routesTitle">
-        <div class="page-head"><h1 id="routesTitle">Routes</h1><button class="scope-button" type="button" data-settings></button></div>
-        <section class="departure-board" aria-labelledby="departureTitle">
-          <img class="departure-art" src="coast-express.jpg" alt="" />
-          <div class="departure-body">
-            <h2 id="departureTitle"><span class="signal" aria-hidden="true"></span> Suggested departure</h2>
-            <div id="departureInfo" aria-live="polite" aria-atomic="true"></div>
-            <div class="board-actions">
-              <button type="button" id="openDeparture">Open service <span aria-hidden="true">→</span></button>
-              <button type="button" id="shuffleDeparture"><span aria-hidden="true">⟳</span> Draw another</button>
-            </div>
+      <section class="panel" id="cabPane" aria-labelledby="cabTitle">
+        <div class="desk-heading"><h1 id="cabTitle">Duty desk</h1><span id="dutyStatus" class="duty-status"></span></div>
+        <div class="desk-layout">
+          <div class="working-card">
+            <div class="card-strip"><span id="cardCaption">Working card</span><strong id="cardRoute"></strong></div>
+            <div class="card-body" id="departureInfo"></div>
           </div>
-        </section>
-        <details class="logbook" id="logbook">
-          <summary><span>Driver’s logbook</span><span id="logbookCount"></span></summary>
-          <div id="metrics"></div>
-          <div id="recentDrives"></div>
-        </details>
+          <section class="cab-controls">
+            <div class="cab-poster"><img class="departure-art" src="coast-express.jpg" alt="" /></div>
+            <div class="control-body" id="deskControls">
+              <h2>Book on</h2><p>Choose this working in the game, then start your drive here.</p>
+              <button type="button" class="primary cab-primary" id="openDeparture">Start duty →</button>
+              <div class="desk-alternatives"><button type="button" id="shuffleDeparture">Draw another</button>
+                <button type="button" data-view="shift">Set duration</button></div>
+              <button type="button" class="text-action" id="findWorking">Find my service</button>
+            </div>
+            <div class="control-body" id="runControls" hidden>
+              <h2>Driving time</h2><output id="runClock" aria-label="Elapsed driving time" aria-live="off">00:00</output>
+              <div class="run-buttons"><button type="button" id="toggleClock">Pause clock</button><button type="button" id="finishDrive" class="primary">Book off</button></div>
+              <div class="run-extras">
+                <button type="button" class="text-action" id="screenOn" hidden aria-pressed="false">Keep screen on</button>
+                <button type="button" class="text-action" id="abandonDrive">Withdraw from duty</button>
+              </div><small id="wakeMessage" role="status"></small>
+            </div>
+          </section>
+        </div>
+      </section>
+      <section class="panel hidden" id="journalPane">
+        <div class="desk-heading"><h1>Driver’s logbook</h1><button class="secondary" data-manual>Log service</button></div>
+        <div class="journal-page"><div class="journal-title"><h2>Driving record</h2><span id="logbookCount"></span></div>
+          <div id="metrics"></div><div id="recentDrives"></div>
+          <button type="button" id="olderDrives" class="secondary" hidden>Show earlier drives</button></div>
+      </section>
+      <section class="panel hidden" id="routesPane" aria-label="Route directory">
         <div class="list-head"><h2>Route directory <span class="count" id="routeCount"></span></h2><button type="button" class="secondary" id="manageRoutes" aria-pressed="false">Edit ownership</button></div>
         <div class="toolbar">
           <div class="wide">
@@ -80,7 +95,7 @@
         <div id="routeList"></div>
       </section>
       <section class="panel hidden" id="servicesPane">
-        <div class="page-head"><h1>Services</h1><button class="scope-button" type="button" data-settings></button></div>
+        <div class="page-head"><h2>Service checklist</h2><button class="scope-button" type="button" data-settings></button></div>
         <div class="timetable-card">
           <div class="list-head"><h2 id="serviceTitle">Service checklist</h2>
             <button type="button" class="secondary" id="changeTimetable" aria-controls="timetableOptions" aria-expanded="false">Change timetable</button>
@@ -113,7 +128,7 @@
         </div>
       </section>
       <section class="panel hidden" id="locosPane">
-        <div class="page-head"><h1>Locomotives</h1><button class="scope-button" type="button" data-settings></button></div>
+        <div class="page-head"><h2>Locomotive progress</h2><button class="scope-button" type="button" data-settings></button></div>
         <p class="muted">
           Progress covers services with a verified locomotive assignment.
           Personal drive counts use the locomotive recorded on each completion.
@@ -131,7 +146,7 @@
         <div id="locoList"></div>
       </section>
       <section class="panel hidden" id="shiftPane">
-        <div class="page-head"><h1>Shift Manager</h1></div>
+        <div class="page-head"><h1>Plan a duty</h1><button class="secondary" data-back-cab>Back to cab</button></div>
         <p class="muted">
           Draw an unfinished passenger service verified for your PS5 and owned DLC.
         </p>
@@ -163,7 +178,7 @@
       </section>
       </div></div>
       <dialog id="settingsDialog" aria-labelledby="settingsTitle">
-        <div class="dialog-head"><h2 id="settingsTitle">Ledger settings</h2><button class="icon-button" type="button" id="closeSettings" aria-label="Close settings" title="Close settings"><svg class="icon" aria-hidden="true"><use href="#i-close"/></svg></button></div>
+        <div class="dialog-head"><h2 id="settingsTitle">Companion settings</h2><button class="icon-button" type="button" id="closeSettings" aria-label="Close settings" title="Close settings"><svg class="icon" aria-hidden="true"><use href="#i-close"/></svg></button></div>
         <div class="catalogue-controls">
           <label class="check-label"><input type="checkbox" id="owned" checked /> Owned route DLC only</label>
           <div id="scope" class="muted"></div></div>
@@ -173,6 +188,14 @@
         <details class="source-info"><summary>About the catalogue</summary><div class="foot" id="sourceNote"></div></details>
       </dialog>
     </main>
+    <dialog id="finishDialog" aria-labelledby="finishTitle">
+      <form id="finishForm">
+        <h2 id="finishTitle">Book off duty</h2><p id="finishSummary" class="muted"></p>
+        <label for="finishLoco">Locomotive driven</label><input type="text" id="finishLoco" list="cabStock" placeholder="Optional" /><datalist id="cabStock"></datalist>
+        <label for="finishNote">Driver’s note</label><textarea id="finishNote" rows="3" maxlength="500" placeholder="Anything to remember about this run?"></textarea>
+        <div class="rowflex"><button class="primary" type="submit">Save to logbook</button><button type="button" id="cancelFinish">Stay on duty</button></div>
+      </form>
+    </dialog>
     <dialog id="manualDialog" aria-labelledby="manualTitle">
       <form method="dialog" id="manualForm">
         <h2 id="manualTitle">Log a service not in the catalogue</h2>

@@ -23,6 +23,7 @@
     done: {},
     unavailable: {},
     manual: [],
+    runs: [],
     owner: {},
     owned: true,
   });
@@ -32,7 +33,11 @@
   let routes = {};
   let rows = [];
   let byId = new Map();
-  let view = "routes";
+  let view = "cab";
+  let libraryView = "routes";
+  let journalLimit = 12;
+  let clockTimer;
+  let finishingDuty;
   let page = 0;
   let editing = null;
   let shift = null;
@@ -76,6 +81,12 @@
     if (
       !record(saved) ||
       !record(saved.done) ||
+      (saved.runs !== undefined && (!Array.isArray(saved.runs) || !saved.runs.every(run =>
+        record(run) && ["id", "date", "loco", "note"].every(key => typeof run[key] === "string") &&
+        Number.isFinite(Date.parse(run.date)) && Number.isFinite(run.drivingMs) && run.drivingMs >= 0))) ||
+      (saved.duty != null && (!record(saved.duty) || typeof saved.duty.id !== "string" ||
+        !Number.isSafeInteger(saved.duty.started) || !Number.isSafeInteger(saved.duty.elapsed) || saved.duty.elapsed < 0 ||
+        (saved.duty.since !== null && !Number.isSafeInteger(saved.duty.since)))) ||
       !boolMap(saved.unavailable) ||
       !boolMap(saved.owner) ||
       (saved.owned !== undefined && typeof saved.owned !== "boolean") ||
@@ -394,7 +405,10 @@
     );
     if (!checklist) return summary + evidenceDetails(row);
     const id = html(row[0]);
-    return summary + '<details class="service-more"><summary>Service details</summary>' +
+    const canDrive = !state.unavailable[row[0]] && !row.retired;
+    const take = canDrive && (!state.duty || state.duty.id === row[0])
+      ? '<button class="take-working" data-take="' + id + '">' + (state.duty ? "Return to cab" : state.done[row[0]] ? "Replay in cab" : "Take to cab") + '</button>' : "";
+    return summary + take + '<details class="service-more"><summary>Service details</summary>' +
       evidenceDetails(row) + '<button type="button" class="secondary" data-unavailable="' +
       id + '">' + (state.unavailable[row[0]] ? "Restore" : "Not playable") + '</button></details>';
   }
@@ -642,56 +656,202 @@
         .join("") || '<p class="muted">No matching locomotives.</p>';
   }
 
-  function displayDeparture() {
-    const info = $("departureInfo");
-    $("openDeparture").hidden = $("shuffleDeparture").hidden = !departure;
+  function elapsed(duty) {
+    return duty.elapsed + (duty.since === null ? 0 : Math.max(0, Date.now() - duty.since));
+  }
+  function durationText(ms) {
+    const seconds = Math.floor(ms / 1000);
+    const minutes = Math.floor(seconds / 60);
+    const pad = n => String(n).padStart(2, "0");
+    return (minutes >= 60 ? Math.floor(minutes / 60) + ":" + pad(minutes % 60) : pad(minutes)) + ":" + pad(seconds % 60);
+  }
+  function showClock() {
+    if (!state.duty) return;
+    const value = durationText(elapsed(state.duty));
+    $("runClock").textContent = value;
+    $("runClock").classList.toggle("long-run", value.length > 5);
+  }
+  function renderCab() {
+    const duty = state.duty;
+    if (!duty && departure === undefined) departure = ledger.chooseShift(state);
+    const row = duty ? byId.get(duty.id) : departure;
+    const paused = duty?.since === null;
+    $("cabPane").classList.toggle("on-duty", Boolean(duty));
+    $("cabTitle").textContent = duty ? "In the cab" : "Duty desk";
+    $("dutyStatus").textContent = duty ? (paused ? "Clock paused" : "On duty") : "Off duty";
+    $("cardCaption").textContent = duty ? "Current working" : "Duty offer";
+    $("deskControls").hidden = Boolean(duty);
+    $("runControls").hidden = !duty;
+    $("openDeparture").hidden = $("shuffleDeparture").hidden = !row;
     $("shuffleDeparture").disabled = false;
-    if (!departure) {
-      info.textContent = "No verified departures remain for your owned DLC.";
+    $("openDeparture").dataset.serviceId = row?.[0] || "";
+    $("toggleClock").textContent = paused ? "Resume clock" : "Pause clock";
+    $("cardRoute").textContent = row ? row[1].replace(/^route:/, "") : "";
+    const info = $("departureInfo");
+    if (!row) {
+      info.textContent = "No verified workings remain for your owned DLC. Find a service in the timetable room.";
       return;
     }
-    const [id, key, , code, time] = departure;
-    const stops = [departure.from, departure.to].filter(Boolean);
-    const minutes = Number.isFinite(departure.durationMinutes) ? fmt(departure.durationMinutes) + " min" : "";
-    info.innerHTML = '<div class="board-working"><b>' + html(time) + '</b><span>' + html(code) +
-      '</span></div><h3>' + html(stops.join(" → ") || routeName(key)) + '</h3><p>' +
-      html([stops.length ? routeName(key) : "", minutes].filter(Boolean).join(" · ")) + '</p>';
-    $("openDeparture").dataset.serviceId = id;
+    const timeParts = /^(\d{1,2}):(\d{2})$/.exec(row[4]);
+    let finish = "";
+    if (timeParts && Number.isFinite(row.durationMinutes)) {
+      const endMinute = Number(timeParts[1]) * 60 + Number(timeParts[2]) + row.durationMinutes;
+      finish = String(Math.floor(endMinute / 60) % 24).padStart(2, "0") + ":" + String(endMinute % 60).padStart(2, "0") +
+        (endMinute >= 1440 ? " +" + Math.floor(endMinute / 1440) + "d" : "");
+    }
+    const timings = (label, value) => '<div><dt>' + html(label) + '</dt><dd>' + html(value || "Unlisted") + '</dd></div>';
+    const station = (label, name) => '<div><small>' + label + '</small><strong>' + html(name) + '</strong></div>';
+    const start = row.from || row.points?.[0];
+    const end = row.to || row.points?.at(-1);
+    const locations = start || end
+      ? '<div class="calling-points">' + station(row.hudListing ? "First recorded location" : "From", start || "Unlisted") +
+        station(row.hudListing ? "Last recorded location" : "To", end || "Unlisted") + '</div>' : "";
+    info.innerHTML = '<div class="working-name"><span>Service</span><h2>' + html(row[3]) + '</h2></div>' +
+      '<p class="working-route">' + html(routeName(row[1])) + '</p>' +
+      (row.title && row.title !== row[3] ? '<p class="working-description">' + html(row.title) + '</p>' : "") +
+      locations + '<dl class="cab-times">' + timings("Service start", row[4]) +
+      (row.stationDeparture ? timings("Station dep.", row.stationDeparture) : "") +
+      (finish ? timings("Est. finish", finish) : "") + timings("Booked time", Number.isFinite(row.durationMinutes) ? fmt(row.durationMinutes) + " min" : "") + '</dl>' +
+      '<dl class="stock-line">' + timings("Train", row.locomotives?.join(" / ") || row.formation) +
+      timings("Timetable", row[2]) + '</dl>' +
+      '<details class="cab-reference"><summary>Working details</summary><p>' + html(availabilityText(row)) + '</p>' +
+      (row.points?.length ? '<p>Recorded locations · ' + row.points.map(html).join(" → ") + '</p>' : '') +
+      evidenceDetails(row) + '</details>';
+    showClock();
   }
-  $("openDeparture").onclick = () => {
-    if (departure) openChecklist(departure[1], departure[2], departure[0]);
+  let screenLock;
+  $("screenOn").hidden = !navigator.wakeLock;
+  $("screenOn").onclick = async () => {
+    const button = $("screenOn");
+    $("wakeMessage").textContent = "";
+    if (screenLock) { await screenLock.release(); return; }
+    button.disabled = true;
+    try {
+      const duty = state.duty;
+      const lock = await navigator.wakeLock.request("screen");
+      if (view !== "cab" || !duty || state.duty?.started !== duty.started) { await lock.release(); return; }
+      screenLock = lock;
+      button.setAttribute("aria-pressed", "true");
+      button.textContent = "Screen kept on";
+      lock.addEventListener("release", () => {
+        if (screenLock !== lock) return;
+        screenLock = null;
+        button.setAttribute("aria-pressed", "false");
+        button.textContent = "Keep screen on";
+      }, {once: true});
+    } catch {
+      $("wakeMessage").textContent = "Your device could not keep the screen on.";
+    } finally { button.disabled = false; }
   };
+  // Serialise cab actions across same-origin tabs and verify the duty shown to the driver.
+  async function changeDuty(expected, update, after) {
+    const commit = () => {
+      if (saveBlocked) return;
+      const previous = state;
+      try {
+        const raw = localStorage.getItem(storageKey);
+        state = raw ? readState(raw) : structuredClone(state);
+      } catch {
+        notice("Device storage is unavailable. Restore access to save your duty.");
+        return;
+      }
+      if ((state.duty?.started ?? null) !== (expected?.started ?? null) || state.duty?.id !== expected?.id) {
+        refreshState();
+        render();
+        return;
+      }
+      if (update() === false) { render(); return; }
+      if (!save()) { state = previous; render(); return false; }
+      catalogue();
+      departure = undefined;
+      searchIndex = null;
+      if (after) after();
+      else render();
+      return true;
+    };
+    return navigator.locks ? navigator.locks.request(storageKey + "-duty", commit) : commit();
+  }
+  function startDuty(row) {
+    if (!row || state.duty) return;
+    changeDuty(null, () => {
+      if (state.unavailable[row[0]] || row.retired) return false;
+      const now = Date.now();
+      state.duty = {id: row[0], started: now, since: now, elapsed: 0};
+      ledger.remember(row, state);
+    }, () => setView("cab"));
+  }
+  $("openDeparture").onclick = () => startDuty(departure);
   $("shuffleDeparture").onclick = () => {
-    const previousId = departure?.[0];
-    departure = ledger.chooseShift(state, {previousId});
-    displayDeparture();
-    if (departure && departure[0] === previousId) {
-      $("departureInfo").querySelector("p").append(" · Only eligible departure");
+    const last = departure?.[0];
+    departure = ledger.chooseShift(state, {previousId: last});
+    renderCab();
+    if (departure && departure[0] === last) {
       $("shuffleDeparture").disabled = true;
-      $("openDeparture").focus();
-    }
-    if (!matchMedia("(prefers-reduced-motion: reduce)").matches) {
-      $("departureInfo").animate([{opacity: .55, transform: "translateY(-4px)"}, {opacity: 1, transform: "none"}], {duration: 190});
+      $("cardCaption").textContent = "Only eligible working";
     }
   };
-
+  $("toggleClock").onclick = () => changeDuty(state.duty, () => {
+    const duty = state.duty;
+    if (!duty) return false;
+    duty.elapsed = elapsed(duty);
+    duty.since = duty.since === null ? Date.now() : null;
+  });
+  $("abandonDrive").onclick = () => {
+    if (state.duty && confirm("Withdraw from this duty without logging a completion?")) {
+      changeDuty(state.duty, () => { delete state.duty; });
+    }
+  };
+  $("finishDrive").onclick = () => {
+    const row = byId.get(state.duty?.id);
+    if (!row) return;
+    finishingDuty = state.duty;
+    $("finishSummary").textContent = row[3] + " · " + routeName(row[1]);
+    $("finishLoco").value = row.locomotives?.length === 1 ? row.locomotives[0] : "";
+    $("cabStock").replaceChildren(...stock(row[1]).map(name => new Option(name, name)));
+    $("finishNote").value = "";
+    $("finishDialog").showModal();
+  };
+  $("cancelFinish").onclick = () => $("finishDialog").close();
+  $("finishForm").onsubmit = async event => {
+    event.preventDefault();
+    const row = byId.get(finishingDuty?.id);
+    if (!row) { $("finishDialog").close(); return; }
+    const saved = await changeDuty(finishingDuty, () => {
+      const ms = elapsed(state.duty);
+      const drive = {date: new Date().toISOString(), loco: $("finishLoco").value.trim(),
+        drivingMs: ms, note: $("finishNote").value.trim()};
+      state.runs.push({id: row[0], ...drive});
+      state.done[row[0]] ??= drive;
+      ledger.remember(row, state);
+      delete state.duty;
+    }, () => {
+      journalLimit = 12;
+      setView("journal");
+      stampDrive(row);
+    });
+    if (saved || state.duty?.started !== finishingDuty.started) $("finishDialog").close();
+    else $("finishSummary").textContent = "The drive could not be saved. Your duty and note are still open.";
+  };
+  $("openLibrary").onclick = () => setView(libraryView);
+  $("findWorking").onclick = () => { setView("routes"); $("globalQuery").focus(); };
+  $("olderDrives").onclick = () => { journalLimit += 12; renderRecentDrives(); };
   function renderRecentDrives() {
-    const recent = Object.entries(state.done)
-      .filter(([id, drive]) => {
-        const row = byId.get(id);
-        return row && visible(row[1]) && !state.unavailable[id] && Number.isFinite(Date.parse(drive.date));
-      })
-      .sort((a, b) => Date.parse(b[1].date) - Date.parse(a[1].date))
-      .slice(0, 3);
-    $("recentDrives").innerHTML = recent.length ? '<h3>Latest drives</h3>' + recent.map(([id, drive]) => {
+    const logged = new Set(state.runs.map(run => JSON.stringify([run.id, run.date])));
+    const original = Object.entries(state.done).filter(([id, drive]) => !logged.has(JSON.stringify([id, drive.date])));
+    const recent = original.concat(state.runs.map(run => [run.id, run]))
+      .filter(([id]) => byId.has(id) && visible(byId.get(id)[1]))
+      .sort((a, b) => (Date.parse(b[1].date) || 0) - (Date.parse(a[1].date) || 0));
+    $("olderDrives").hidden = recent.length <= journalLimit;
+    $("recentDrives").innerHTML = recent.length ? '<h3>Signed-off workings</h3>' + recent.slice(0, journalLimit).map(([id, drive]) => {
       const row = byId.get(id);
-      const date = new Date(drive.date).toLocaleDateString("en-GB", {month: "short", day: "numeric"});
+      const date = Number.isFinite(Date.parse(drive.date)) ? new Date(drive.date).toLocaleDateString("en-GB", {month: "short", day: "numeric"}) : "Undated";
+      const meta = [drive.loco, Number.isFinite(drive.drivingMs) ? durationText(drive.drivingMs) + " driving" : ""].filter(Boolean);
       return '<button class="log-entry" type="button" data-recent="' + html(id) + '"><time>' + html(date) +
-        '</time><span><strong>' + html(row[3]) + '</strong><small>' + html(routeName(row[1])) +
-        '</small></span>' + icon("arrow") + '</button>';
-    }).join("") : "";
+        '</time><span><strong>' + html(row[3]) + '</strong><small>' + html(routeName(row[1])) + '</small>' +
+        (meta.length ? '<small>' + html(meta.join(" · ")) + '</small>' : '') +
+        (drive.note ? '<em>' + html(drive.note) + '</em>' : '') + '</span>' + icon("arrow") + '</button>';
+    }).join("") : '<p class="journal-empty">Your signed-off workings will appear here.</p>';
   }
-  $("logbook").ontoggle = () => { if ($("logbook").open) renderRecentDrives(); };
 
   function stampDrive(row) {
     const receipt = $("driveReceipt");
@@ -730,7 +890,7 @@
       html(name.replace(/\s+Route Add-On\s*$/i, "")) +
       "</div>" +
       serviceInfo(shift) +
-      '<div class="rowflex"><button type="button" class="primary" data-open-shift="true">Open service</button>' +
+      '<div class="rowflex"><button type="button" class="primary" data-open-shift="true">Review working</button>' +
       sourceLink(shift.sourceUrl, "View source timetable") +
       "</div></div>";
   }
@@ -740,14 +900,14 @@
     const keys = routeKeys();
     const groups = new Map(keys.map((key) => [key, tally()]));
     renderSummary(keys, groups);
-    if (view === "routes") {
-      if (departure === undefined) {
-        departure = ledger.chooseShift(state);
-        displayDeparture();
-      }
-      if ($("logbook").open) renderRecentDrives();
-      renderRoutes(keys, groups);
+    if (state.duty && state.unavailable[state.duty.id]) delete state.duty;
+    if (view !== "cab" || !state.duty) {
+      if (screenLock && !screenLock.released) screenLock.release().catch(() => {});
+      $("wakeMessage").textContent = "";
     }
+    if (view === "cab") renderCab();
+    if (view === "journal") renderRecentDrives();
+    if (view === "routes") renderRoutes(keys, groups);
     if (view === "services") renderServices();
     if (view === "locos") renderLocos(keys);
     if (view === "shift") renderShift();
@@ -763,7 +923,17 @@
       button.classList.toggle("active", selected);
       button.setAttribute("aria-pressed", String(selected));
     });
-    for (const name of ["routes", "services", "locos", "shift"]) {
+    const library = ["routes", "services", "locos"].includes(next);
+    if (library) libraryView = next;
+    $("libraryTools").classList.toggle("hidden", !library);
+    $("openLibrary").classList.toggle("active", library);
+    $("openLibrary").setAttribute("aria-pressed", String(library));
+    const cabTab = document.querySelector('.tabs [data-view="cab"]');
+    cabTab.classList.toggle("active", next === "cab" || next === "shift");
+    cabTab.setAttribute("aria-pressed", String(next === "cab" || next === "shift"));
+    clearInterval(clockTimer);
+    if (next === "cab") clockTimer = setInterval(showClock, 1000);
+    for (const name of ["cab", "journal", "routes", "services", "locos", "shift"]) {
       $(name + "Pane").classList.toggle("hidden", name !== next);
     }
     render();
@@ -775,6 +945,7 @@
     searchIndex = null;
     shift = null;
     shiftAttempted = false;
+    if (state.duty && state.unavailable[state.duty.id]) delete state.duty;
     const saved = save();
     render();
     return saved;
@@ -789,6 +960,7 @@
       if (state.done[row[0]] || state.unavailable[row[0]])
         ledger.remember(row, state);
     }
+    if (state.duty && (!byId.has(state.duty.id) || state.unavailable[state.duty.id])) delete state.duty;
     $("owned").checked = !!state.owned;
     selectedService = null;
     shift = null;
@@ -962,7 +1134,8 @@
   }
 
   function openShift() {
-    if (shift) openChecklist(shift[1], shift[2], shift[0]);
+    if (shift && !state.duty) { departure = shift; setView("cab"); }
+    else if (shift) openChecklist(shift[1], shift[2], shift[0]);
   }
 
   $("backup").onclick = () => {
@@ -1027,7 +1200,12 @@
     const action = button.dataset;
     if (action.searchHit !== undefined) openSearchHit(searchHits[Number(action.searchHit)]);
     else if (action.view) setView(action.view, action.view === "routes");
-    else if (action.recent) {
+    else if (button.hasAttribute("data-back-cab")) setView("cab");
+    else if (button.hasAttribute("data-manual")) openManual("", false);
+    else if (action.take) {
+      if (state.duty) setView("cab");
+      else { departure = byId.get(action.take); setView("cab"); }
+    } else if (action.recent) {
       const row = byId.get(action.recent);
       if (row) openChecklist(row[1], row[2], row[0]);
     } else if (button.id === "manageRoutes") {
@@ -1238,5 +1416,5 @@
     sourceLink(checked?.url, "DLC ownership tracker") +
     (checked?.asOf ? " checked " + html(checked.asOf) : "") +
     ". Progress saves in this browser. Use Export and Restore to transfer a backup between devices.";
-  setView("routes");
+  setView("cab");
 })();

@@ -297,6 +297,8 @@ const TSWLedger = (() => {
         state.manual = state.manual.filter(row => !manualLinks.has(row[0]));
       }
       // New evidence may link two records after the user has already logged either one.
+      for (const run of state.runs || []) run.id = manualLinks.get(run.id) || serviceLinks[run.id] || run.id;
+      if (state.duty) state.duty.id = manualLinks.get(state.duty.id) || serviceLinks[state.duty.id] || state.duty.id;
       for (const table of [state.done, state.unavailable, state.records]) {
         if (!table) continue;
         for (const id of Object.keys(table)) {
@@ -309,8 +311,9 @@ const TSWLedger = (() => {
           delete table[id];
         }
       }
+      const loggedIds = new Set((state.runs || []).map(run => run.id));
       for (const [key, record] of Object.entries(state.records || {})) {
-        if (currentByKey.has(key) || !(state.done[key] || state.unavailable[key])) continue;
+        if (currentByKey.has(key) || !(state.done[key] || state.unavailable[key] || state.duty?.id === key || loggedIds.has(key))) continue;
         if (!currentRoutes[record.routeKey]) {
           currentRoutes[record.routeKey] = {name: record.routeName || record.routeKey, owned: null,
             compatible: null, locos: [], region: "", variants: []};
@@ -335,8 +338,9 @@ const TSWLedger = (() => {
       }));
       for (const row of manualRows) row[2] = menuName(row[1], row[2]);
       const rows = currentRows.concat(manualRows);
+      const loggedIds = new Set((state.runs || []).map(run => run.id));
       for (const [key, record] of Object.entries(state.records || {})) {
-        if (currentByKey.has(key) || !(state.done[key] || state.unavailable[key])) continue;
+        if (currentByKey.has(key) || !(state.done[key] || state.unavailable[key] || state.duty?.id === key || loggedIds.has(key))) continue;
         const row = [key, record.routeKey, menuName(record.routeKey, record.variant), record.code, record.time];
         rows.push(Object.assign(row, { ...record, retired: true, locomotives: [] }));
       }

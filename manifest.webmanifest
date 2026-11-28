@@ -1,7 +1,7 @@
 {
-  "name": "TSW Service Ledger",
-  "short_name": "TSW Ledger",
-  "description": "Your personal Train Sim World service checklist and shift manager.",
+  "name": "TSW Driver’s Companion",
+  "short_name": "TSW Companion",
+  "description": "Book on, follow your working card and keep a driving logbook beside Train Sim World.",
   "lang": "en-GB",
   "start_url": "./",
   "scope": "./",

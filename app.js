@@ -36,6 +36,8 @@
   let page = 0;
   let editing = null;
   let shift = null;
+  let departure;
+  let receiptTimer;
   let shiftAttempted = false;
   let selectedService = null;
   let searchIndex = null;
@@ -116,9 +118,10 @@
   }
 
   function save() {
-    if (saveBlocked) return;
+    if (saveBlocked) return false;
     try {
       localStorage.setItem(storageKey, JSON.stringify(state));
+      return true;
     } catch {
       notice(
         "This browser could not save your changes. Export progress before closing.",
@@ -282,6 +285,7 @@
       metric("Services completed", total.done, total.total) +
       metric("Routes driven", driven, keys.length) +
       metric("Locos driven", used.size, listedLocos.size);
+    $("logbookCount").textContent = fmt(total.done) + (total.done === 1 ? " service completed" : " services completed");
     const scopeLabel = state.owned ? "Owned routes" : "All routes";
     for (const button of document.querySelectorAll(".scope-button")) {
       button.innerHTML = icon("settings") + scopeLabel;
@@ -635,6 +639,67 @@
         .join("") || '<p class="muted">No matching locomotives.</p>';
   }
 
+  function displayDeparture() {
+    const info = $("departureInfo");
+    $("openDeparture").hidden = $("shuffleDeparture").hidden = !departure;
+    $("shuffleDeparture").disabled = false;
+    if (!departure) {
+      info.textContent = "No verified departures remain for your owned DLC.";
+      return;
+    }
+    const [id, key, , code, time] = departure;
+    const stops = [departure.from, departure.to].filter(Boolean);
+    const minutes = Number.isFinite(departure.durationMinutes) ? fmt(departure.durationMinutes) + " min" : "";
+    info.innerHTML = '<div class="board-working"><b>' + html(time) + '</b><span>' + html(code) +
+      '</span></div><h3>' + html(stops.join(" → ") || routeName(key)) + '</h3><p>' +
+      html([stops.length ? routeName(key) : "", minutes].filter(Boolean).join(" · ")) + '</p>';
+    $("openDeparture").dataset.serviceId = id;
+  }
+  $("openDeparture").onclick = () => {
+    if (departure) openChecklist(departure[1], departure[2], departure[0]);
+  };
+  $("shuffleDeparture").onclick = () => {
+    const previousId = departure?.[0];
+    departure = ledger.chooseShift(state, {previousId});
+    displayDeparture();
+    if (departure && departure[0] === previousId) {
+      $("departureInfo").querySelector("p").append(" · Only eligible departure");
+      $("shuffleDeparture").disabled = true;
+      $("openDeparture").focus();
+    }
+    if (!matchMedia("(prefers-reduced-motion: reduce)").matches) {
+      $("departureInfo").animate([{opacity: .55, transform: "translateY(-4px)"}, {opacity: 1, transform: "none"}], {duration: 190});
+    }
+  };
+
+  function renderRecentDrives() {
+    const recent = Object.entries(state.done)
+      .filter(([id, drive]) => {
+        const row = byId.get(id);
+        return row && visible(row[1]) && !state.unavailable[id] && Number.isFinite(Date.parse(drive.date));
+      })
+      .sort((a, b) => Date.parse(b[1].date) - Date.parse(a[1].date))
+      .slice(0, 3);
+    $("recentDrives").innerHTML = recent.length ? '<h3>Latest drives</h3>' + recent.map(([id, drive]) => {
+      const row = byId.get(id);
+      const date = new Date(drive.date).toLocaleDateString("en-GB", {month: "short", day: "numeric"});
+      return '<button class="log-entry" type="button" data-recent="' + html(id) + '"><time>' + html(date) +
+        '</time><span><strong>' + html(row[3]) + '</strong><small>' + html(routeName(row[1])) +
+        '</small></span>' + icon("arrow") + '</button>';
+    }).join("") : "";
+  }
+  $("logbook").ontoggle = () => { if ($("logbook").open) renderRecentDrives(); };
+
+  function stampDrive(row) {
+    const receipt = $("driveReceipt");
+    const stamp = document.createElement("strong");
+    stamp.textContent = "✓  Drive logged";
+    const working = document.createElement("span");
+    working.textContent = [row[3], row[4]].filter(Boolean).join(" · ");
+    receipt.replaceChildren(stamp, working);
+    clearTimeout(receiptTimer);
+    receiptTimer = setTimeout(() => receipt.replaceChildren(), 3200);
+  }
   function renderShift() {
     if (
       shift &&
@@ -672,7 +737,14 @@
     const keys = routeKeys();
     const groups = new Map(keys.map((key) => [key, tally()]));
     renderSummary(keys, groups);
-    if (view === "routes") renderRoutes(keys, groups);
+    if (view === "routes") {
+      if (departure === undefined) {
+        departure = ledger.chooseShift(state);
+        displayDeparture();
+      }
+      if ($("logbook").open) renderRecentDrives();
+      renderRoutes(keys, groups);
+    }
     if (view === "services") renderServices();
     if (view === "locos") renderLocos(keys);
     if (view === "shift") renderShift();
@@ -696,14 +768,17 @@
   }
 
   function persist() {
+    departure = undefined;
     searchIndex = null;
     shift = null;
     shiftAttempted = false;
-    save();
+    const saved = save();
     render();
+    return saved;
   }
 
   function refreshState() {
+    departure = undefined;
     ledger.reconcile(state);
     catalogue();
     // Capture original v1 ticks once, while their catalogue information is available.
@@ -949,7 +1024,10 @@
     const action = button.dataset;
     if (action.searchHit !== undefined) openSearchHit(searchHits[Number(action.searchHit)]);
     else if (action.view) setView(action.view, action.view === "routes");
-    else if (button.id === "manageRoutes") {
+    else if (action.recent) {
+      const row = byId.get(action.recent);
+      if (row) openChecklist(row[1], row[2], row[0]);
+    } else if (button.id === "manageRoutes") {
       editingOwnership = !editingOwnership;
       button.setAttribute("aria-pressed", String(editingOwnership));
       button.textContent = editingOwnership ? "Finish editing" : "Edit ownership";
@@ -1011,7 +1089,9 @@
         ledger.remember(row, state);
       } else delete state.done[id];
       catalogue();
-      persist();
+      const saved = persist();
+      if (saved && state.done[id]) stampDrive(row);
+      else $("driveReceipt").replaceChildren();
     } else if (input.id === "owned") {
       state.owned = input.checked;
       selectedService = null;
@@ -1095,7 +1175,8 @@
     ledger.reconcile(state);
     catalogue();
     routeOpts();
-    persist();
+    const saved = persist();
+    if (saved && state.done[id]) stampDrive(byId.get(id));
   };
   $("mName").oninput = () => $("mName").setCustomValidity("");
   $("mCompleted").onchange = () => { $("mLoco").disabled = !$("mCompleted").checked; };
@@ -1110,6 +1191,7 @@
       return;
     }
     shift = ledger.chooseShift(state, {
+      previousId: shift?.[0],
       minMinutes: min === "" ? null : Number(min),
       maxMinutes: max === "" ? null : Number(max),
     });

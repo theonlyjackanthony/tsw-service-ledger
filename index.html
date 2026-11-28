@@ -39,22 +39,26 @@
         <button class="icon-button mobile-settings" type="button" data-settings aria-label="Ledger settings"><svg class="icon" aria-hidden="true"><use href="#i-settings"/></svg></button>
       </header>
       <div class="content">
+      <div id="driveReceipt" role="status" aria-live="polite" aria-atomic="true"></div>
       <p class="notice hidden" id="storageNotice" role="alert"></p>
       <section class="panel" id="routesPane" aria-labelledby="routesTitle">
         <div class="page-head"><h1 id="routesTitle">Routes</h1><button class="scope-button" type="button" data-settings></button></div>
-        <section class="overview" aria-label="Network progress">
-          <svg class="network" aria-hidden="true" viewBox="0 0 290 170" preserveAspectRatio="xMaxYMid slice"><g fill="none" stroke-linejoin="round" stroke-width="4">
-<path stroke="#75caa9" d="M-20 170h45l69-69h55l73-73h86"/>
-<path stroke="#e7ba79" d="M20 190l62-62h96l57-57h78"/>
-<path stroke="#729dba" d="M105 -15v54l40 40h56l58 58h54"/>
-<path stroke="#497d78" d="M55 -18v43l63 63v42l43 43"/>
-</g><g fill="#163934" stroke="#e4eee4" stroke-width="3">
-<circle cx="55" cy="140" r="4"/><circle cx="95" cy="101" r="4"/><circle cx="118" cy="101" r="6"/>
-<circle cx="171" cy="79" r="6"/><circle cx="224" cy="28" r="4"/><circle cx="153" cy="128" r="4"/>
-<circle cx="220" cy="86" r="6"/><circle cx="262" cy="71" r="4"/><circle cx="105" cy="32" r="4"/></g></svg>
-          <h2>Network progress</h2>
-          <div id="metrics"></div>
+        <section class="departure-board" aria-labelledby="departureTitle">
+          <img class="departure-art" src="coast-express.jpg" alt="" />
+          <div class="departure-body">
+            <h2 id="departureTitle"><span class="signal" aria-hidden="true"></span> Suggested departure</h2>
+            <div id="departureInfo" aria-live="polite" aria-atomic="true"></div>
+            <div class="board-actions">
+              <button type="button" id="openDeparture">Open service <span aria-hidden="true">→</span></button>
+              <button type="button" id="shuffleDeparture"><span aria-hidden="true">⟳</span> Draw another</button>
+            </div>
+          </div>
         </section>
+        <details class="logbook" id="logbook">
+          <summary><span>Driver’s logbook</span><span id="logbookCount"></span></summary>
+          <div id="metrics"></div>
+          <div id="recentDrives"></div>
+        </details>
         <div class="list-head"><h2>Route directory <span class="count" id="routeCount"></span></h2><button type="button" class="secondary" id="manageRoutes" aria-pressed="false">Edit ownership</button></div>
         <div class="toolbar">
           <div class="wide">

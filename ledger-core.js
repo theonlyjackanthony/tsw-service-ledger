@@ -359,7 +359,7 @@ const TSWLedger = (() => {
       return unknown ? "unknown" : "missing";
     }
 
-    function chooseShift(state, {minMinutes = null, maxMinutes = null} = {}, random = Math.random) {
+    function chooseShift(state, {minMinutes = null, maxMinutes = null, previousId = null} = {}, random = Math.random) {
       const invalid = n => n != null && (!Number.isInteger(n) || n < 0);
       if (invalid(minMinutes) || invalid(maxMinutes) ||
           (minMinutes != null && maxMinutes != null && minMinutes > maxMinutes)) return null;
@@ -383,7 +383,8 @@ const TSWLedger = (() => {
           (!log[4] || log[4] === row[4]) &&
           log[3].trim().toLowerCase() === row[3].toLowerCase());
       });
-      return eligible.length ? eligible[Math.floor(random() * eligible.length)] : null;
+      const pool = previousId && eligible.length > 1 ? eligible.filter(row => row[0] !== previousId) : eligible;
+      return pool.length ? pool[Math.floor(random() * pool.length)] : null;
     }
 
     return {routes: () => currentRoutes,

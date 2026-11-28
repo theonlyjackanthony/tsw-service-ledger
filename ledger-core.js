@@ -40,14 +40,12 @@ const TSWLedger = (() => {
       reviewed.set(key, { rule, codes: rule.codePattern ? new RegExp(rule.codePattern) : null });
     }
 
-    const originalRoutes = Object.create(null);
     const currentRoutes = Object.create(null);
     for (const [key, route] of Object.entries(legacy.routes)) {
       const product = products.get(routeProducts.get(key));
-      originalRoutes[key] = {
-        ...route, owned: product?.owned ?? null, compatible: product?.tsw7 ?? null,
+      currentRoutes[key] = {
+        ...route, variants: [], owned: product?.owned ?? null, compatible: product?.tsw7 ?? null,
       };
-      currentRoutes[key] = { ...originalRoutes[key], variants: [] };
     }
     const routeForTimetable = new Map();
     for (const timetable of timetables.values()) {
@@ -242,7 +240,27 @@ const TSWLedger = (() => {
       }
       currentRoutes[route].variants = documented;
     }
-    const menuName = (route, name) => menuNames.get(slot(route, name)) || name;
+    function menuName(route, name) {
+      const variant = variantNames.get(slot(route, name)) || name;
+      return menuNames.get(slot(route, variant)) || variant;
+    }
+
+    // Fill the remaining IDs after richer listings have claimed their progress keys.
+    const workbookOnly = new Set();
+    for (const original of legacyRows) {
+      const [id, route, sheet] = original;
+      if (currentByKey.has(id)) continue;
+      const name = menuName(route, sheet);
+      const row = Object.assign([...original], original, {source: "workbook", workbookSheet: sheet});
+      row[2] = name;
+      currentRows.push(row);
+      currentByKey.set(id, row);
+      workbookOnly.add(id);
+      const variants = currentRoutes[route].variants;
+      if (!variants.some(v => v.name === name)) {
+        variants.push({name, unassigned: Boolean(directory[route])});
+      }
+    }
     const ambiguousSlots = new Set();
     const slotVariants = new Map();
     for (const row of currentRows) {
@@ -304,11 +322,10 @@ const TSWLedger = (() => {
       };
     }
 
-    function services(source, state) {
+    function services(state) {
       const manualRows = (state.manual || []).map(row => Object.assign([...row], {
         id: row[0], locomotives: [], manual: true, durationMinutes: null,
       }));
-      if (source === "legacy") return legacyRows.concat(manualRows);
       for (const row of manualRows) row[2] = menuName(row[1], row[2]);
       const rows = currentRows.concat(manualRows);
       for (const [key, record] of Object.entries(state.records || {})) {
@@ -351,7 +368,7 @@ const TSWLedger = (() => {
       const uncertain = new Set();
       for (const key of [...Object.keys(state.done), ...Object.keys(state.unavailable)]) {
         const old = legacyByKey.get(key);
-        if (old && !currentByKey.has(key)) uncertain.add(slot(old[1], old[2], old[3]));
+        if (old && workbookOnly.has(key)) uncertain.add(slot(old[1], old[2], old[3]));
       }
       const manual = (state.manual || []).filter(row => state.done[row[0]] || state.unavailable[row[0]]);
       const eligible = currentRows.filter(row => {
@@ -369,7 +386,7 @@ const TSWLedger = (() => {
       return eligible.length ? eligible[Math.floor(random() * eligible.length)] : null;
     }
 
-    return {routes: source => source === "legacy" ? originalRoutes : currentRoutes,
+    return {routes: () => currentRoutes,
       services, availability, remember, chooseShift, reconcile, locoName};
   }
 

@@ -25,7 +25,6 @@
     manual: [],
     owner: {},
     owned: true,
-    source: "current",
   });
   let state = defaults();
   let saveBlocked = false;
@@ -97,14 +96,7 @@
       );
     }
     const loaded = { ...defaults(), ...saved };
-    const hasOriginalProgress =
-      Object.keys(saved.done).length ||
-      Object.keys(saved.unavailable).length ||
-      saved.manual.length;
-    loaded.source =
-      saved.source === "legacy" || (saved.source == null && hasOriginalProgress)
-        ? "legacy"
-        : "current";
+    delete loaded.source; // Older saves selected a separate workbook view.
     return loaded;
   }
 
@@ -168,8 +160,8 @@
   }
   function catalogue() {
     searchIndex = null;
-    routes = ledger.routes(state.source);
-    rows = ledger.services(state.source, state);
+    routes = ledger.routes();
+    rows = ledger.services(state);
     byId = new Map(rows.map((row) => [row[0], row]));
   }
   function variants(reset = false) {
@@ -290,8 +282,7 @@
       metric("Services completed", total.done, total.total) +
       metric("Routes driven", driven, keys.length) +
       metric("Locos driven", used.size, listedLocos.size);
-    const scopeLabel = (state.source === "legacy" ? "Workbook" : "Main checklist") +
-      (state.owned ? " · Owned" : " · All routes");
+    const scopeLabel = state.owned ? "Owned routes" : "All routes";
     for (const button of document.querySelectorAll(".scope-button")) {
       button.innerHTML = icon("settings") + scopeLabel;
       button.setAttribute("aria-label", "Change catalogue settings, " + scopeLabel);
@@ -475,7 +466,7 @@
     }
   }
   function searchTerms(row) {
-    return [row[3], row[4], row.title, row.from, row.to, row.origin, row.destination, row.formation,
+    return [row[3], row[4], row.title, row.workbookSheet, row.from, row.to, row.origin, row.destination, row.formation,
       ...(row.points || []), ...(row.locomotives ?? []), state.done[row[0]]?.loco].join(" ").toLowerCase();
   }
 
@@ -506,7 +497,6 @@
     }
     if (table?.sourceUrl) sources.push(sourceLink(table.sourceUrl, "View source timetable"));
     $("timetableSources").innerHTML = sources.join(" · ");
-    $("alternativeMatches").replaceChildren();
     const matched = scope
       .filter((row) => {
         const [id] = row;
@@ -577,16 +567,6 @@
       (table?.directoryUrl && !scope.length
         ? '<p class="muted">This timetable is documented. Its service list has yet to be imported. You can log a service here.</p>'
         : '<p class="muted">No matching services. Change the filters or log an unlisted service.</p>');
-    const other = state.source === "current" ? "legacy" : "current";
-    const otherRows = ledger.services(other, state).filter(row => row[1] === key &&
-      !row.manual && !row.retired && (!q || searchTerms(row).includes(q)));
-    if (otherRows.length && (!matched.length || !q)) {
-      const name = other === "legacy" ? "original workbook" : "main checklist";
-      const destination = q && !matched.length ? $("alternativeMatches") : $("timetableSources");
-      destination.innerHTML += ' <button class="secondary" data-other-source="' +
-        other + '">Browse ' + fmt(otherRows.length) + (q ? ' matching' : '') +
-        ' records in ' + name + '</button>';
-    }
     $("pageLabel").textContent =
       fmt(matched.length) +
       " records · page " +
@@ -672,7 +652,7 @@
         : "";
       return;
     }
-    const name = ledger.routes("current")[shift[1]]?.name ?? shift[1];
+    const name = routes[shift[1]]?.name ?? shift[1];
     panel.innerHTML =
       '<div class="shift-card"><h3>' +
       html(shift[3]) +
@@ -696,10 +676,7 @@
     if (view === "services") renderServices();
     if (view === "locos") renderLocos(keys);
     if (view === "shift") renderShift();
-    $("coverage").textContent =
-      state.source === "legacy"
-        ? "Original workbook · partial coverage. Counts cover listed services. Locomotive and DLC assignments require separate evidence."
-        : "Main checklist · partial coverage. Counts cover listed services. HUD entries show their source and PS5 verification status.";
+
   }
 
   function setView(next, restorePosition = false) {
@@ -735,7 +712,6 @@
         ledger.remember(row, state);
     }
     $("owned").checked = !!state.owned;
-    $("source").value = state.source;
     selectedService = null;
     shift = null;
     shiftAttempted = false;
@@ -765,41 +741,38 @@
   function makeSearchIndex() {
     const entries = [];
     const seen = new Set();
-    function add(type, key, source, route, variant, id, title, detail, extra = "", time = "", specific = "") {
+    function add(type, key, route, variant, id, title, detail, extra = "", time = "", specific = "") {
       if (seen.has(key)) return;
       seen.add(key);
-      entries.push({type, source, route, variant, id, title, detail, time,
+      entries.push({type, route, variant, id, title, detail, time,
         primary: normalizeSearch(title), specific: normalizeSearch(specific), terms: normalizeSearch([title, route, detail, extra].join(" "))});
     }
-    for (const source of ["current", "legacy"]) {
-      const collection = ledger.routes(source);
-      for (const [route, item] of Object.entries(collection)) {
-        const name = item.name.split("\n")[0].replace(/\s+Route Add-On\s*$/i, "");
-        add("Route", "route:" + route, source, route, "", "", name, route);
-        for (const table of item.variants) {
-          if (!table.unassigned) add("Timetable", JSON.stringify([route, table.name]), source, route, table.name,
-            "", table.name, name, table.sourceName || "");
-        }
-        for (const alias of item.locos || []) {
+    for (const [route, item] of Object.entries(routes)) {
+      const name = item.name.split("\n")[0].replace(/\s+Route Add-On\s*$/i, "");
+      add("Route", "route:" + route, route, "", "", name, route);
+      for (const table of item.variants) {
+        if (!table.unassigned) add("Timetable", JSON.stringify([route, table.name]), route, table.name,
+          "", table.name, name, table.sourceName || "");
+      }
+      for (const alias of item.locos || []) {
+        const loco = ledger.locoName(alias);
+        add("Locomotive", "loco:" + loco, route, "", "", loco, "Locomotive progress", alias);
+      }
+    }
+    for (const row of rows) {
+      const [id, route, variant, code, time] = row;
+      const name = routes[route]?.name.split("\n")[0].replace(/\s+Route Add-On\s*$/i, "") || route;
+      const locos = [...(row.locomotives || []), state.done[id]?.loco].filter(Boolean);
+      for (const alias of locos) {
+        if (!state.unavailable[id]) {
           const loco = ledger.locoName(alias);
-          add("Locomotive", "loco:" + loco, source, route, "", "", loco, "Locomotive progress", alias);
+          add("Locomotive", "loco:" + loco, route, "", "", loco, "Locomotive progress", alias);
         }
       }
-      for (const row of ledger.services(source, state)) {
-        const [id, route, variant, code, time] = row;
-        const name = collection[route]?.name.split("\n")[0].replace(/\s+Route Add-On\s*$/i, "") || route;
-        const locos = [...(row.locomotives || []), state.done[id]?.loco].filter(Boolean);
-        for (const alias of locos) {
-          if (!state.unavailable[id]) {
-            const loco = ledger.locoName(alias);
-            add("Locomotive", "loco:" + loco, source, route, "", "", loco, "Locomotive progress", alias);
-          }
-        }
-        const endpoints = [row.from, row.to].filter(Boolean).join(" → ");
-        const detail = [name, variant, row.hudListing ? "HUD listing · PS5 unverified" : "", endpoints, ...new Set(locos)].filter(Boolean).join(" · ");
-        add("Service", "service:" + id, source, route, variant, id, row.title || code, detail,
-          [code, time, row.origin, row.destination, ...(row.points || []), row.formation, ...locos.map(ledger.locoName)].join(" "), time, [code, time, endpoints, row.formation, ...locos].join(" "));
-      }
+      const endpoints = [row.from, row.to].filter(Boolean).join(" → ");
+      const detail = [name, variant, row.source === "workbook" ? "Original workbook" : "", row.hudListing ? "HUD listing · PS5 unverified" : "", endpoints, ...new Set(locos)].filter(Boolean).join(" · ");
+      add("Service", "service:" + id, route, variant, id, row.title || code, detail,
+        [code, time, row.workbookSheet, row.origin, row.destination, ...(row.points || []), row.formation, ...locos.map(ledger.locoName)].join(" "), time, [code, time, endpoints, row.formation, ...locos].join(" "));
     }
     return entries;
   }
@@ -846,7 +819,7 @@
     $("globalList").innerHTML = searchHits.slice(0, searchLimit).map((hit, i) =>
       '<button type="button" class="search-hit" data-search-hit="' + i + '"><span class="search-hit-heading"><span><strong>' +
       html(hit.title) + '</strong>' + (hit.time ? ' · ' + html(hit.time) : '') + '</span>' + searchStatus(hit) + '</span><small>' +
-      html([hit.type, hit.source === "legacy" ? "Original workbook" : "", hit.detail].filter(Boolean).join(" · ")) +
+      html([hit.type, hit.detail].filter(Boolean).join(" · ")) +
       '</small></button>').join("");
   }
 
@@ -858,13 +831,13 @@
   function openSearchHit(hit) {
     clearGlobalSearch();
     if (hit.type === "Locomotive") {
-      selectSourceRoute(hit.source, hit.route);
+      selectRoute(hit.route);
       $("locoSearch").value = hit.title;
       save();
       setView("locos");
       $("locoSearch").focus();
     } else {
-      openChecklist(hit.source, hit.route, hit.variant, hit.id);
+      openChecklist(hit.route, hit.variant, hit.id);
     }
   }
 
@@ -889,10 +862,7 @@
     $("globalList").children[firstNew]?.focus();
   };
 
-  function selectSourceRoute(source, route) {
-    state.source = source;
-    $("source").value = source;
-    catalogue();
+  function selectRoute(route) {
     if (!visible(route)) {
       state.owned = false;
       $("owned").checked = false;
@@ -900,9 +870,9 @@
     routeOpts(route);
   }
 
-  function openChecklist(source, route, variant, id) {
+  function openChecklist(route, variant, id) {
     toggleTimetable(false);
-    selectSourceRoute(source, route);
+    selectRoute(route);
     $("variant").value = variant;
     $("status").value = "all";
     $("search").value = "";
@@ -914,7 +884,7 @@
   }
 
   function openShift() {
-    if (shift) openChecklist("current", shift[1], shift[2], shift[0]);
+    if (shift) openChecklist(shift[1], shift[2], shift[0]);
   }
 
   $("backup").onclick = () => {
@@ -989,18 +959,7 @@
       $("shiftMax").value = action.duration;
       updateDuration();
     }
-    else if (action.otherSource) {
-      const route = $("route").value;
-      state.source = action.otherSource;
-      $("source").value = state.source;
-      catalogue();
-      routeOpts(route);
-      variants(true);
-      $("status").value = "all";
-      selectedService = null;
-      page = 0;
-      persist();
-    } else if (action.route) {
+    else if (action.route) {
       toggleTimetable(false);
       selectedService = null;
       $("route").value = action.route;
@@ -1052,15 +1011,6 @@
         ledger.remember(row, state);
       } else delete state.done[id];
       catalogue();
-      persist();
-    } else if (input.id === "source") {
-      state.source = input.value;
-      selectedService = null;
-      $("search").value = "";
-      page = 0;
-      catalogue();
-      routeOpts();
-      variants(true);
       persist();
     } else if (input.id === "owned") {
       state.owned = input.checked;

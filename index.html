@@ -100,7 +100,6 @@
             <option value="retired">Retired</option>
           </select></div>
         </div>
-        <div id="alternativeMatches"></div>
         <p class="selection hidden" id="selectedService"></p>
         <div id="serviceList"></div>
         <div class="pagination">
@@ -161,11 +160,10 @@
       </div></div>
       <dialog id="settingsDialog" aria-labelledby="settingsTitle">
         <div class="dialog-head"><h2 id="settingsTitle">Ledger settings</h2><button class="icon-button" type="button" id="closeSettings" aria-label="Close settings" title="Close settings"><svg class="icon" aria-hidden="true"><use href="#i-close"/></svg></button></div>
-        <div class="catalogue-controls"><label for="source">Timetable source</label>
-          <select id="source"><option value="current">Main checklist</option><option value="legacy">Original workbook</option></select>
+        <div class="catalogue-controls">
           <label class="check-label"><input type="checkbox" id="owned" checked /> Owned route DLC only</label>
           <div id="scope" class="muted"></div></div>
-        <p class="notice" id="coverage">Loading the timetable database…</p>
+        <p class="notice" id="coverage">Progress covers listed services from the original workbook and imported timetables.</p>
         <h3>Progress backup</h3><div class="rowflex"><button id="backup">Export progress</button><button id="restore">Restore progress</button></div>
         <input class="hidden" id="file" type="file" accept="application/json,.json" />
         <details class="source-info"><summary>About the catalogue</summary><div class="foot" id="sourceNote"></div></details>

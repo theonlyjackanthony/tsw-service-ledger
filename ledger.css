@@ -228,7 +228,7 @@ select {
 #variantSummary .progress-inline { display: flex; gap: 8px; align-items: center; width: auto; }
 #variantSummary .bar { width: 50px; margin: 0; }
 #timetableSources { font-size: 13px; }
-#alternativeMatches:not(:empty), #driveOverride:not(:empty) { margin: 8px 0; }
+#driveOverride:not(:empty) { margin: 8px 0; }
 #driveOverride { color: var(--green); font-size: 13px; }
 .service-filters { grid-template-columns: minmax(0,1fr) minmax(120px,190px); }
 @media (max-width: 720px) {

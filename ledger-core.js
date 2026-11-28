@@ -80,6 +80,13 @@ const TSWLedger = (() => {
         sourceUrl: [timetable.sourceUrl, sheet, table, train].join('/'),
         sourceRowCount: service.sourceRowCount || 1,
       });
+      const driving = bundle.drivingTimes?.[service.id];
+      if (driving) {
+        row.stationDeparture = row[4];
+        row[4] = driving.start;
+        row.durationMinutes = driving.durationMinutes;
+        row.timingRecord = driving.hudId;
+      }
       if (currentByKey.has(progressKey)) throw new Error("Conflicting progress identities");
       currentByKey.set(progressKey, row);
       currentRows.push(row);

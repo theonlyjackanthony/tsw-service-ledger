@@ -380,6 +380,7 @@
       "<small>" +
       html(row[2]) +
       duration +
+      (row.stationDeparture ? " · Station departure " + html(row.stationDeparture) : "") +
       "</small><small>" +
       (locos.length ? html(locos.join(" / ")) : "Locomotive unknown") +
       formation +
@@ -422,6 +423,8 @@
     }
     if (!row.sourceUrl) return "";
     const links = [sourceLink(row.sourceUrl, "Published service")];
+    if (row.timingRecord) links.push(sourceLink(window.LEDGER_DATA.hudCrosscheck.sourceUrl,
+      "Driving start from HUD record " + row.timingRecord));
     let products = "";
     if (row.rule) {
       const names = new Map(
@@ -470,7 +473,7 @@
     }
   }
   function searchTerms(row) {
-    return [row[3], row[4], row.title, row.workbookSheet, row.from, row.to, row.origin, row.destination, row.formation,
+    return [row[3], row[4], row.stationDeparture, row.title, row.workbookSheet, row.from, row.to, row.origin, row.destination, row.formation,
       ...(row.points || []), ...(row.locomotives ?? []), state.done[row[0]]?.loco].join(" ").toLowerCase();
   }
 
@@ -847,7 +850,7 @@
       const endpoints = [row.from, row.to].filter(Boolean).join(" → ");
       const detail = [name, variant, row.source === "workbook" ? "Original workbook" : "", row.hudListing ? "HUD listing · PS5 unverified" : "", endpoints, ...new Set(locos)].filter(Boolean).join(" · ");
       add("Service", "service:" + id, route, variant, id, row.title || code, detail,
-        [code, time, row.workbookSheet, row.origin, row.destination, ...(row.points || []), row.formation, ...locos.map(ledger.locoName)].join(" "), time, [code, time, endpoints, row.formation, ...locos].join(" "));
+        [code, time, row.stationDeparture, row.workbookSheet, row.origin, row.destination, ...(row.points || []), row.formation, ...locos.map(ledger.locoName)].join(" "), time, [code, time, endpoints, row.formation, ...locos].join(" "));
     }
     return entries;
   }

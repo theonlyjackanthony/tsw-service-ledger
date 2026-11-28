@@ -419,7 +419,7 @@
         " · record " + html(row.hud.hudId) + " · start " + html(row.hud.start) : (row.sourceUrl ? sourceLink(row.sourceUrl, "Published service") : "");
       return '<details class="evidence"><summary>Service sources</summary>' +
         evidence + (row.points?.length ? "<div>Recorded locations · " + html(row.points.join(" → ")) + "</div>" : "") + (row.observation ? "<div>" + html(row.observation) + "</div>" : "") +
-        (row.observationUrl ? sourceLink(row.observationUrl, "Developer’s layer notes") : "") + "</details>";
+        (row.observationUrl ? sourceLink(row.observationUrl, "Supporting source") : "") + "</details>";
     }
     if (["communitySheet", "passengerVariant", "serviceReference"].includes(row.source)) {
       return '<details class="evidence"><summary>Service sources</summary>' +

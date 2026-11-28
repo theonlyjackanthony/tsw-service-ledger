@@ -23,6 +23,10 @@ const TSWLedger = (() => {
     const byRoute = index(routeLinks.routes, "routeId");
     const overrides = index(routeLinks.timetableOverrides, "timetableId");
     const timetables = index(catalogue.timetables, "id");
+    for (const link of routeLinks.legacyVariants) {
+      const timetable = timetables.get(link.timetableId);
+      if (link.displayName && timetable) timetables.set(timetable.id, {...timetable, name: link.displayName});
+    }
     const engines = index(requirements.locomotives, "id");
     const stockNames = new Map();
     for (const engine of requirements.locomotives) {
@@ -46,7 +50,7 @@ const TSWLedger = (() => {
       currentRoutes[key] = { ...originalRoutes[key], variants: [] };
     }
     const routeForTimetable = new Map();
-    for (const timetable of catalogue.timetables) {
+    for (const timetable of timetables.values()) {
       const link = overrides.get(timetable.id) || byRoute.get(timetable.routeId);
       const routeKey = link?.legacyKey || "route:" + timetable.routeId;
       routeForTimetable.set(timetable.id, routeKey);
@@ -118,6 +122,13 @@ const TSWLedger = (() => {
 
     const variantNames = new Map(routeLinks.legacyVariants.map(link =>
       [slot(link.legacyKey, link.variant), timetables.get(link.timetableId)?.name]));
+    const workbookPatterns = new Map();
+    for (const table of routeLinks.workbookTimetables || []) {
+      const key = slot(table.legacyKey, table.variant);
+      variantNames.set(key, table.name);
+      workbookPatterns.set(key, new RegExp(table.codePattern));
+      currentRoutes[table.legacyKey].variants.push({name: table.name});
+    }
     // The extended Southeastern route is the one covered by the publisher's full timetable.
     variantNames.set(slot("SEH", "Southeastern High Speed Extended"), timetables.get("southeastern-highspeed")?.name);
     const confirmedSlots = new Map();
@@ -157,6 +168,17 @@ const TSWLedger = (() => {
       confirmedSlots.set(identity, confirmedSlots.has(identity) ? null : row);
       const variants = currentRoutes[row[1]].variants;
       if (!variants.some(v => v.name === row[2])) variants.push({name: row[2]});
+    }
+
+    // A photographed menu identifies the variant. Workbook timings keep their own evidence level.
+    for (const original of legacyRows) {
+      const [id, route, variant, code] = original;
+      const key = slot(route, variant);
+      if (!workbookPatterns.get(key)?.test(code) || currentByKey.has(id)) continue;
+      const row = Object.assign([...original], original, {source: "workbook"});
+      row[2] = variantNames.get(key);
+      currentRows.push(row);
+      currentByKey.set(id, row);
     }
 
     // Published additions share a workbook tick only where the reviewed source identifies that job.

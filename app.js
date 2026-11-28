@@ -354,6 +354,7 @@
         .join("") || '<p class="muted">No matching routes.</p>';
   }
   function availabilityText(row) {
+    if (row.source === "workbook") return "Original workbook · PS5 service unverified";
     if (row.source === "freight") return "Freight timetable · first on-route time · PS5 unverified";
     if (row.source === "wiki" || row.source === "gameplay") return "Community listing · PS5 unverified";
     if (row.hudListing) return "HUD-listed · PS5 and DLC requirements unverified";
